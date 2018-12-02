@@ -1,0 +1,5456 @@
+Index: TB2Common.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2Common.pas,v
+retrieving revision 1.22
+diff -u -r1.22 TB2Common.pas
+--- TB2Common.pas	26 Mar 2003 17:44:36 -0000	1.22
++++ TB2Common.pas	14 Jun 2003 15:14:01 -0000
+@@ -6,7 +6,9 @@
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
+-  $jrsoftware: tb2k/Source/TB2Common.pas,v 1.22 2003/03/26 17:44:36 jr Exp $
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
++  $jrsoftware: tb2k/Source/TB2Common.pas,v 1.24 2003/06/07 22:34:42 jr Exp $
+ }
+ 
+ interface
+@@ -20,6 +22,7 @@
+   TListSortExCompare = function(const Item1, Item2, ExtraData: Pointer): Integer;
+   THandleWMPrintNCPaintProc = procedure(Wnd: HWND; DC: HDC; AppData: Longint);
+ 
++function AddToFrontOfList(var List: TList; Item: Pointer): Boolean;
+ function AddToList(var List: TList; Item: Pointer): Boolean;
+ function ApplicationIsActive: Boolean;
+ function AreFlatMenusEnabled: Boolean;
+@@ -63,14 +66,15 @@
+ procedure RemoveMessages(const AMin, AMax: Integer);
+ procedure RemoveFromList(var List: TList; Item: Pointer);
+ procedure SelectNCUpdateRgn(Wnd: HWND; DC: HDC; Rgn: HRGN);
++function StripAccelChars(const S: String): String;
+ function UsingMultipleMonitors: Boolean;
+ 
+ const
+-  PopupMenuWindowNCSize = 3;
+   DT_HIDEPREFIX = $00100000;
+ 
+ var
+   TrackMouseEventFunc: function(var EventTrack: TTrackMouseEvent): BOOL; stdcall;
++  PopupMenuWindowNCSize: Byte = 3; //Skin Patch
+ 
+ implementation
+ 
+@@ -289,26 +293,32 @@
+   Result := TextMetric.tmHeight;
+ end;
+ 
++function StripAccelChars(const S: String): String;
++var
++  I: Integer;
++begin
++  Result := S;
++  I := 1;
++  while I <= Length(Result) do begin
++    if not(Result[I] in LeadBytes) then begin
++      if Result[I] = '&' then
++        System.Delete(Result, I, 1);
++      Inc(I);
++    end
++    else
++      Inc(I, 2);
++  end;
++end;
++
+ function GetTextWidth(const DC: HDC; S: String; const Prefix: Boolean): Integer;
+ { Returns the width of the specified string using the font currently selected
+-  into DC. If Prefix is True, it first removes "&" characters as necessary. } 
++  into DC. If Prefix is True, it first removes "&" characters as necessary. }
+ var
+-  I: Integer;
+   Size: TSize;
+ begin
+   { This procedure is 10x faster than using DrawText with the DT_CALCRECT flag }
+-  if Prefix then begin
+-    I := 1;
+-    while I <= Length(S) do begin
+-      if not(S[I] in LeadBytes) then begin
+-        if S[I] = '&' then
+-          System.Delete(S, I, 1);
+-        Inc(I);
+-      end
+-      else
+-        Inc(I, 2);
+-    end;
+-  end;
++  if Prefix then
++    S := StripAccelChars(S);
+   GetTextExtentPoint32(DC, PChar(S), Length(S), Size);
+   Result := Size.cx;
+ end;
+@@ -370,6 +380,16 @@
+   Result := List.IndexOf(Item) = -1;
+   if Result then
+     List.Add(Item);
++end;
++
++function AddToFrontOfList(var List: TList; Item: Pointer): Boolean;
++{ Returns True if Item didn't already exist in the list }
++begin
++  if List = nil then
++    List := TList.Create;
++  Result := List.IndexOf(Item) = -1;
++  if Result then
++    List.Insert(0, Item);
+ end;
+ 
+ procedure RemoveFromList(var List: TList; Item: Pointer);
+Index: TB2Dock.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2Dock.pas,v
+retrieving revision 1.87
+diff -u -r1.87 TB2Dock.pas
+--- TB2Dock.pas	13 Mar 2003 17:51:07 -0000	1.87
++++ TB2Dock.pas	14 Jun 2003 15:14:28 -0000
+@@ -6,6 +6,8 @@
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
+   $jrsoftware: tb2k/Source/TB2Dock.pas,v 1.87 2003/03/13 17:51:07 jr Exp $
+ }
+ 
+@@ -18,9 +20,11 @@
+   to see your code window while stepping through the dragging routines. }
+ 
+ {$I TB2Ver.inc}
++{$R TBSkinPlus.res} //Skin Patch
+ 
+ uses
+-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms;
++  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms,
++  TBSkinPlus, TBSkinShared;//Skin Patch
+ 
+ type
+   TTBCustomForm = {$IFDEF JR_D3} TCustomForm {$ELSE} TForm {$ENDIF};
+@@ -77,7 +81,7 @@
+     procedure SetBoundLines(Value: TTBDockBoundLines);
+     procedure SetFixAlign(Value: Boolean);
+     procedure SetPosition(Value: TTBDockPosition);
+-    //procedure SetVersion(const Value: TToolbar97Version);
++    //procedure SetVersion (const Value: TToolbar97Version);
+ 
+     function GetToolbarCount: Integer;
+     function GetToolbars(Index: Integer): TTBCustomDockableWindow;
+@@ -177,6 +181,7 @@
+   TTBFloatingWindowParentClass = class of TTBFloatingWindowParent;
+   TTBFloatingWindowParent = class(TCustomForm)
+   private
++    FCloseButtonHover: Boolean; //Skin Patch
+     FCloseButtonDown: Boolean; { True if Close button is currently depressed }
+     FDockableWindow: TTBCustomDockableWindow;
+     FParentForm: TTBCustomForm;
+@@ -188,6 +193,8 @@
+     procedure CMShowingChanged(var Message: TMessage); message CM_SHOWINGCHANGED;
+     procedure CMDialogKey(var Message: TCMDialogKey); message CM_DIALOGKEY;
+     procedure CMTextChanged(var Message: TMessage); message CM_TEXTCHANGED;
++    procedure CMMouseLeave(var Message: TMessage); message CM_MOUSELEAVE; //Skin Patch
++    procedure WMNCMouseMove(var Message: TWMNCMouseMove); message WM_NCMOUSEMOVE; //Skin Patch
+     procedure WMActivate(var Message: TWMActivate); message WM_ACTIVATE;
+     procedure WMClose(var Message: TWMClose); message WM_CLOSE;
+     procedure WMGetMinMaxInfo(var Message: TWMGetMinMaxInfo); message WM_GETMINMAXINFO;
+@@ -291,6 +298,9 @@
+     FCloseButtonHover: Boolean;
+     FFloatParent: TTBFloatingWindowParent; { Run-time only: The actual Parent of the toolbar when it is floating }
+ 
++    FSkin: TTBBaseSkin; //Skin Patch
++    FDockTextAlign: TAlignment; //Skin Patch
++
+     { Property access methods }
+     //function GetVersion: TToolbar97Version;
+     function GetNonClientWidth: Integer;
+@@ -434,6 +444,7 @@
+     procedure ResizeTrack(var Rect: TRect; const OrigRect: TRect); dynamic;
+     procedure ResizeTrackAccept; dynamic;
+     procedure SizeChanging(const AWidth, AHeight: Integer); virtual;
++    procedure SetSkin(Value: TTBBaseSkin); virtual; //Skin Patch
+   public
+     property Docked: Boolean read FDocked;
+     property CurrentDock: TTBDock read FCurrentDock write SetCurrentDock stored False;
+@@ -447,6 +458,8 @@
+     property LastDock: TTBDock read FLastDock write SetLastDock stored IsLastDockStored;
+     property NonClientWidth: Integer read GetNonClientWidth;
+     property NonClientHeight: Integer read GetNonClientHeight;
++    property DockTextAlign: TAlignment read FDockTextAlign write FDockTextAlign; //Skin Patch
++    property Skin: TTBBaseSkin read FSkin write SetSkin; //Skin Patch
+ 
+     constructor Create(AOwner: TComponent); override;
+     destructor Destroy; override;
+@@ -538,7 +551,7 @@
+ 
+ uses
+   Registry, IniFiles, Consts, Menus,
+-  TB2Common, TB2Hook, TB2Consts;
++  TB2Common, TB2Hook, TB2Consts, TB2Toolbar; //Skin Patch
+ 
+ type
+   TControlAccess = class(TControl);
+@@ -546,8 +559,14 @@
+ const
+   DockedBorderSize = 2;
+   DockedBorderSize2 = DockedBorderSize*2;
+-  DragHandleSizes: array[Boolean, TTBDragHandleStyle] of Integer =
+-    ((9, 0, 6), (14, 14, 14));
++//Skin Patch Begin
++{The first boolean is for the captions,
++ second the closebutton when docked
++ The the handle style}
++  DragHandleSizes: array[Boolean, Boolean, TTBDragHandleStyle] of Integer =
++    (((9,   0,  6), (14, 14, 14)),
++     ((14, 14, 14), (14, 14, 14)));
++//Skin Patch End
+   DragHandleXOffsets: array[Boolean, TTBDragHandleStyle] of Integer =
+     ((2, 0, 1), (3, 0, 5));
+   HT_TB2k_Border = 2000;
+@@ -578,7 +597,7 @@
+ 
+ var
+   FloatingToolWindows: TList = nil;
+-
++  CaptionFont: TFont = Nil;
+ 
+ { Misc. functions }
+ 
+@@ -693,7 +712,7 @@
+                 the tool window's handle. }
+               if Assigned(Parent) and Parent.HandleAllocated and
+                  (HWND(GetWindowLong(Parent.Handle, GWL_HWNDPARENT)) = Wnd) then
+-                SetWindowLong(Parent.Handle, GWL_HWNDPARENT, Longint(Application.Handle));
++                SetWindowLong (Parent.Handle, GWL_HWNDPARENT, Longint(Application.Handle));
+                 { ^ Restore GWL_HWNDPARENT back to Application.Handle }
+           end;
+       end;
+@@ -1803,10 +1822,19 @@
+ end;
+ 
+ procedure TTBDock.CMSysColorChange(var Message: TMessage);
++Var
++ I: Integer;
+ begin
+   inherited;
+   if Assigned(FBackground) then
+     FBackground.SysColorChanged;
++
++//Skin Patch Begin
++//Update Toolbar Colors when a Scheme Change occur
++  for i := 0 to Self.GetToolbarCount -1 do
++   If Assigned(GetToolbars(i).Skin) then
++    GetToolbars(i).Skin.CalculateColorSet;
++//Skin Patch End
+ end;
+ 
+ procedure TTBDock.RelayMsgToFloatingBars(var Message: TMessage);
+@@ -1964,17 +1992,6 @@
+   Result := TTBCustomDockableWindow(DockVisibleList[Index]);
+ end;
+ 
+-(*function TTBDock.GetVersion: TToolbar97Version;
+-begin
+-  Result := Toolbar97VersionPropText;
+-end;
+-
+-procedure TTBDock.SetVersion(const Value: TToolbar97Version);
+-begin
+-  { write method required for the property to show up in Object Inspector }
+-end;*)
+-
+-
+ { TTBFloatingWindowParent - Internal }
+ 
+ constructor TTBFloatingWindowParent.Create(AOwner: TComponent);
+@@ -2072,6 +2089,30 @@
+   RedrawNCArea([twrdCaption]);
+ end;
+ 
++//Skin Patch Begin
++procedure TTBFloatingWindowParent.WMNCMouseMove(var Message: TWMNCMouseMove); //Skin Patch
++var
++  InArea: Boolean;
++begin
++  inherited;
++  { Note: TME_NONCLIENT was introduced in Windows 98 and 2000 }
++  if (Win32MajorVersion >= 5) or
++     (Win32MajorVersion = 4) and (Win32MinorVersion >= 10) then
++    CallTrackMouseEvent (Handle, TME_LEAVE or $10 {TME_NONCLIENT});
++  InArea := Message.HitTest = HT_TB2k_Close;
++  if FCloseButtonHover <> InArea then begin
++    FCloseButtonHover := InArea;
++    RedrawNCArea([twrdCloseButton]);
++  end;
++end;
++
++procedure TTBFloatingWindowParent.CMMouseLeave(var Message: TMessage);//Skin Patch
++begin
++ FCloseButtonHover := False;
++ RedrawNCArea([twrdCloseButton]);
++end;
++//Skin Patch End
++
+ function GetCaptionRect(const Control: TTBFloatingWindowParent;
+   const AdjustForBorder, MinusCloseButton: Boolean): TRect;
+ begin
+@@ -2093,6 +2134,7 @@
+ procedure TTBFloatingWindowParent.WMNCCalcSize(var Message: TWMNCCalcSize);
+ var
+   TL, BR: TPoint;
++  NCM: TNonClientMetrics; //Skin Patch
+ begin
+   { Doesn't call inherited since it overrides the normal NC sizes }
+   Message.Result := 0;
+@@ -2105,6 +2147,13 @@
+       Dec(Bottom, BR.Y);
+     end;
+   end;
++//Skin Patch Begin
++//When a change of the Pallete Font occur the floating
++//window should update with the new font settings
++  NCM.cbSize := SizeOf(NCM);
++  SystemParametersInfo(SPI_GETNONCLIENTMETRICS, 0, @NCM, 0);
++  CaptionFont.Handle := CreateFontIndirect(NCM.lfSmCaptionFont);
++//Skin Patch End
+ end;
+ 
+ procedure TTBFloatingWindowParent.WMNCPaint(var Message: TMessage);
+@@ -2339,6 +2388,11 @@
+      (COLOR_GRADIENTACTIVECAPTION, COLOR_GRADIENTINACTIVECAPTION));
+   CaptionTextColors: array[Boolean] of Integer =
+     (COLOR_CAPTIONTEXT, COLOR_INACTIVECAPTIONTEXT);
++  FAlignment: Array [TAlignment] Of Byte =(DT_LEFT, DT_RIGHT, DT_CENTER);
++//Skin Patch Begin
++var
++  CSkin: TTBBaseSkin;
++//Skin Patch End
+ 
+   function GradientCaptionsEnabled: Boolean;
+   const
+@@ -2349,6 +2403,134 @@
+     Result := SystemParametersInfo(SPI_GETGRADIENTCAPTIONS, 0, @S, 0) and S;
+   end;
+ 
++//Skin Patch Begin
++  function GetXPCaptionRect(const Control: TTBFloatingWindowParent;
++    const AdjustForBorder, MinusCloseButton: Boolean): TRect;
++  begin
++    Result := Rect(0, 0, Control.ClientWidth, GetSmallCaptionHeight-1);
++
++    if MinusCloseButton then
++      Dec(Result.Right, Result.Bottom);
++
++    if AdjustForBorder then
++     with Control.FDockableWindow.GetFloatingBorderSize do
++       OffsetRect(Result, X -1, Y -1);
++  end;
++
++  procedure XPDrawCaption(const DC: HDC; const R: TRect);
++  { Draws a caption in XP style, taken from Win3DrawCaption }
++  var
++    R2, RCap: TRect;
++    SaveTextColor: TColorRef;
++    SaveFont: HFONT;
++    FillBrush, SaveBrush: HBRUSH;
++    SkinPen, SavePen: HPen;
++  begin
++    R2 := R;
++
++    Inc(r2.right, 2);
++    { Fill the rectangle }
++    if CSkin.SkinType = tbsOfficeXP then
++    begin
++      FillBrush := CreateSolidBrush(CSkin.RGBColor(cDockBorderTitle));
++      FillRect(DC, R2, FillBrush)
++    end
++    else
++    begin // Caption background
++      RCap := GetXPCaptionRect(Self, True, false);
++      Inc(RCap.Right, 2);
++
++      FillBrush := CreateSolidBrush(ColorToRGB(Color));
++      FillRect(DC, RCap, FillBrush);
++      DeleteObject(FillBrush);
++
++      FillBrush := CreateSolidBrush(CSkin.RGBColor(cSelBar));
++      SkinPen := CreatePen(PS_SOLID, 0, CSkin.RGBColor(cSelBarBorder));
++
++      SavePen := SelectObject(DC, SkinPen);
++      SaveBrush := SelectObject(DC, FillBrush);
++
++      RoundRect(DC, RCap.Left, RCap.Top, RCap.Right, RCap.Bottom, 6, 6);
++
++      SelectObject(DC, SavePen);
++      SelectObject(DC, SaveBrush);
++      DeleteObject(SkinPen);
++//      Dec(R2.Right, 10);
++    end;
++
++    Inc(r2.left, 2);
++    Dec(R2.Right);
++
++    SetBkMode(DC, Transparent);
++
++    if CSkin.ParentFont then
++      SaveFont := SelectObject(DC, CaptionFont.Handle)
++    else
++      SaveFont := SelectObject(DC, CSkin.CaptionFont.Handle);
++
++    { Draw the text }
++    SaveTextColor := SetTextColor(DC, CSkin.RGBColor(cCaptionText));
++
++    DrawText(DC, PChar(Caption), Length(Caption), R2,
++             DT_SINGLELINE or DT_NOPREFIX or DT_VCENTER or DT_END_ELLIPSIS or
++             FAlignment[FDockableWindow.FDockTextAlign]);
++
++    SetTextColor(DC, SaveTextColor);
++    SelectObject(DC, SaveFont);
++
++    DeleteObject(FillBrush);
++  end;
++
++  function GetXPCloseButtonRect(const Control: TTBFloatingWindowParent;
++    const AdjustForBorder: Boolean): TRect;
++  begin
++    Result := GetXPCaptionRect(Control, AdjustForBorder, False);
++    Result.Left := Result.Right - (GetSmallCaptionHeight-1) -1;
++
++    if CSkin.SkinType = tbsWindowsXP then
++      Dec(Result.Right);
++  end;
++
++  procedure DrawCloseButtonBitmap(DC: HDC; R2: TRect);
++  const
++   CopyModes: Array[0..1, 0..1] Of Integer =
++    ((ROP_DSPDxax, SRCINVERT), (SRCINVERT, ROP_DSPDxax));
++  var
++    Brush: HBrush;
++    Bitmap: TBitmap;
++  begin
++    Bitmap := TBitmap.Create;
++    Bitmap.LoadFromResourceName(HInstance, 'CLOSE');
++
++    if ((CSkin.SkinType = tbsOfficeXP) and FCloseButtonHover)
++       and not FCloseButtonDown then begin
++
++      InflateRect(R2, 2, 2);
++      Dec(R2.Top, 2);
++
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelBar));
++      FillRect(DC, R2, Brush);
++      DeleteObject(Brush);
++
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelBarBorder));
++      FrameRect(DC, R2, Brush);
++      DeleteObject(Brush);
++
++      InflateRect(R2, -2, -2);
++      Inc(R2.Top, 2);
++    end;
++
++    BitBlt(DC,
++           R2.Left + ((R2.Right - R2.Left) div 2) - (Bitmap.Width Div 2),
++           R2.Top + ((R2.Bottom - R2.Top) div 2) - (Bitmap.Height Div 2) -1,
++           R2.Right - R2.Left, R2.Bottom - R2.Top,
++           Bitmap.Canvas.Handle, 0, 0,
++           CopyModes[Integer(CSkin.SkinType = tbsWindowsXP), Integer(FCloseButtonDown)]);
++
++    Bitmap.Free;
++  end;
++//Skin Patch End
++
+ const
+   CloseButtonState: array[Boolean] of UINT = (0, DFCS_PUSHED);
+   ActiveCaptionFlags: array[Boolean] of UINT = (DC_ACTIVE, 0);
+@@ -2361,8 +2543,26 @@
+   SavePen: HPEN;
+   SaveIndex: Integer;
+   S: TPoint;
++
++//Skin Patch Begin
++  BorderBrush,
++  OtherBrush,
++  FaceBrush,
++  CapBrush,
++  SelBrush,
++  SelBorder: HBRUSH;
++  Skinned: Boolean;
++  SaveFont: HFont;
++  SaveTextColor: TColorRef;
++  Bitmap: TBitmap;
++//Skin Patch End
+ begin
+   if not HandleAllocated then Exit;
++//Skin Patch Begin
++  Skinned := Assigned(FDockableWindow.FSkin) and
++             not (FDockableWindow.FSkin.SkinType = tbsDisabled);
++  if Skinned then CSkin := FDockableWindow.FSkin;
++//Skin Patch Begin
+ 
+   if not DrawToDC then
+     DC := GetWindowDC(Handle)
+@@ -2380,7 +2580,299 @@
+       problem (but I'm not sure why). }
+     GetWindowRect(Handle, R);  OffsetRect(R, -R.Left, -R.Top);
+     IntersectClipRect(DC, R.Left, R.Top, R.Right, R.Bottom);
++//Skin Patch Begin
++    if Skinned then
++      if CSkin.SkinType = tbsNativeXP then begin
++        GetWindowRect(Handle, R);  OffsetRect(R, -R.Left, -R.Top);
++
++        SaveIndex := SaveDC(DC);
++        S := FDockableWindow.GetFloatingBorderSize;
++
++        with R do
++          ExcludeClipRect(DC, Left + S.X, Top + S.Y, Right - S.X, Bottom - S.Y);
++
++        R.Top := GetXPCaptionRect(Self, False, FDockableWindow.FCloseButton).Bottom + S.Y;
++
++        aTheme := OpenThemeData(0, WindowThemeName);
++
++        R2 := R;
++
++        if not FDockableWindow.ShowCaption then
++         R2.Top := S.Y;
++
++        R2.Right := S.X;
++        Dec(R2.Bottom, S.Y);
++        aPart := Integer(WindowPart(WP_SMALLFRAMELEFT));
++        aState := Integer(CaptionState(CS_ACTIVE));
++        DrawThemeBackground(aTheme, DC, aPart, aState, R2, nil);
++
++        R2 := R;
++
++        if not FDockableWindow.ShowCaption then
++         R2.Top := S.Y;
++
++        R2.Left := R.Right - S.Y;
++        Dec(R2.Bottom, S.Y);
++        aPart := Integer(WindowPart(WP_SMALLFRAMERIGHT));
++        aState := Integer(CaptionState(CS_ACTIVE));
++        DrawThemeBackground(aTheme, DC, aPart, aState, R2, nil);
++
++        R2 := R;
++
++        if not FDockableWindow.ShowCaption then
++         R2.Top := S.Y;
++
++        R2.Top := R2.Bottom - S.Y;
++        aPart := Integer(WindowPart(WP_SMALLFRAMEBOTTOM));
++        aState := Integer(CaptionState(CS_ACTIVE));
++        DrawThemeBackground(aTheme, DC, aPart, aState, R2, nil);
++
++        RestoreDC(DC, SaveIndex);
++
++        if FDockableWindow.ShowCaption then begin
++         if twrdCaption in RedrawWhat then begin
++           R2 := GetXPCaptionRect(Self, False, FDockableWindow.FCloseButton);
++           R2.Bottom := GetXPCaptionRect(Self, True, FDockableWindow.FCloseButton).Bottom + 2;
++           R2.Right := R.Right;
++
++           aPart := Integer(WindowPart(WP_SMALLCAPTION));
++           aState := Integer(CaptionState(CS_ACTIVE));
++           DrawThemeBackground(aTheme, DC, aPart, aState, R2, nil);
++         end;
++
++         if FDockableWindow.FCloseButton then begin
++           R := GetXPCloseButtonRect(Self, True);
++           InflateRect(R, -2, -1);
++           Inc(R.Right);
++
++           aPart := Integer(WindowPart(WP_SMALLCLOSEBUTTON));
++
++           if FCloseButtonDown then
++            aState := Integer(CaptionState(CBS_PUSHED))
++           Else
++            if FCloseButtonHover then
++              aState := Integer(CaptionState(CBS_HOT))
++            else
++              aState := Integer(CaptionState(CBS_NORMAL));
++
++           DrawThemeBackground(aTheme, DC, aPart, aState, R, nil);
++
++           InflateRect(R, 2, 2);
++           Dec(R.Left);
++         end;
++
++         R2 := Rect(S.X, S.Y, R2.Right - GetXPCloseButtonRect(Self, True).Bottom,
++                    GetXPCloseButtonRect(Self, True).Bottom);
++
++         SetBkMode(DC, Transparent);
++         SaveFont := SelectObject(DC, CaptionFont.Handle);
++         SaveTextColor := SetTextColor(DC, ColorToRGB(clCaptionText));
++
++         DrawText(DC, PChar(Caption), Length(Caption), R2,
++                  DT_SINGLELINE or DT_NOPREFIX or DT_VCENTER or DT_END_ELLIPSIS or
++                  FAlignment[FDockableWindow.FDockTextAlign]);
++
++         SetTextColor(DC, SaveTextColor);
++         SelectObject(DC, SaveFont);
++         SetTextColor(DC, SaveTextColor);
++        end
++       else begin
++         R2 := Rect(0, 0, R2.Right, S.Y);
++
++         Bitmap := TBitmap.Create;
++         Bitmap.Height := R2.Bottom;
++         Bitmap.Width := R2.Right;
++
++         aPart := Integer(WindowPart(WP_SMALLFRAMEBOTTOM));
++         aState := Integer(CaptionState(CS_ACTIVE));
++
++         DrawThemeBackground(aTheme, Bitmap.Canvas.Handle,
++                             aPart, aState, Bitmap.Canvas.ClipRect, nil);
++
++         with Bitmap do //Flip it
++          Canvas.CopyRect(Canvas.ClipRect, Canvas, Rect(0, Height - 1, Width, -1));
++
++         BitBlt(DC, R2.Left, R2.Top, R2.Right, R2.Bottom,
++                Bitmap.Canvas.Handle, 0, 0, SRCCOPY);
++         FreeAndNil(Bitmap);
++       end;
++
++       CloseThemeData(aTheme);
++      end
++      else begin
++      FaceBrush := CreateSolidBrush(CSkin.RGBColor(cFace));
++      BorderBrush := CreateSolidBrush(CSkin.RGBColor(cDockBorderOut));
++      OtherBrush := CreateSolidBrush(CSkin.RGBColor(cDockBorderIn));
++
++      if CSkin.SkinType = tbsOfficeXP then
++      CapBrush := CreateSolidBrush(CSkin.RGBColor(cDockBorderTitle))
++      else
++      CapBrush := CreateSolidBrush(CSkin.RGBColor(cSelBar));
++      Try
++       if twrdBorder in RedrawWhat then
++       if CSkin.SkinType = tbsOfficeXP then begin
++         { This works around WM_NCPAINT problem described at top of source code }
++         {no!  R := Rect(0, 0, Width, Height);}
++         GetWindowRect(Handle, R);  OffsetRect(R, -R.Left, -R.Top);
++
++         FrameRect(DC, R, BorderBrush);
++         InflateRect(R, -1, -1);
++         FrameRect(Dc, R, OtherBrush);
++
++         GetWindowRect(Handle, R);  OffsetRect(R, -R.Left, -R.Top);
++         SaveIndex := SaveDC(DC);
++         S := FDockableWindow.GetFloatingBorderSize;
++
++         with R do
++          ExcludeClipRect(DC, Left + S.X, Top + S.Y, Right - S.X, Bottom - S.Y);
++
++         InflateRect(R, -2, -2);
++         FillRect(DC, R, FaceBrush);
++         RestoreDC(DC, SaveIndex);
++
++         //Round floating boarders
++         SetPixelV(DC, R.Left, R.Top, CSkin.RGBColor(cDockBorderOut));
++         SetPixelV(DC, R.Left, R.Bottom -1, CSkin.RGBColor(cDockBorderOut));
++         SetPixelV(DC, R.Right -1, R.Top, CSkin.RGBColor(cDockBorderOut));
++         SetPixelV(DC, R.Right -1, R.Bottom -1, CSkin.RGBColor(cDockBorderOut));
++       end
++       else
++       begin  // Windows XP style (just as normal)
++      { This works around WM_NCPAINT problem described at top of source code }
++      {no!  R := Rect(0, 0, Width, Height);}
++      GetWindowRect(Handle, R);  OffsetRect(R, -R.Left, -R.Top);
++      DrawEdge(DC, R, BDR_RAISED, BF_RECT);
++      SaveIndex := SaveDC(DC);
++      S := FDockableWindow.GetFloatingBorderSize;
++      with R do
++        ExcludeClipRect(DC, Left + S.X, Top + S.Y, Right - S.X, Bottom - S.Y);
++      InflateRect(R, -2, -2);
++      FillRect(DC, R, GetSysColorBrush(COLOR_BTNFACE));
++      RestoreDC(DC, SaveIndex);
++      end;
++
++      if FDockableWindow.ShowCaption then begin
++        if (twrdCaption in RedrawWhat) and FDockableWindow.FCloseButton and
++           (twrdCloseButton in RedrawWhat) then
++          SaveIndex := SaveDC(DC)
++        else
++          SaveIndex := 0;
++        try
++          if not (CSkin.SkinType = tbsWindowsXP) then
++            if SaveIndex <> 0 then
++              with GetCloseButtonRect(Self, True) do
++                { Reduces flicker }
++                ExcludeClipRect(DC, Left, Top, Right, Bottom);
++
++          { Caption }
++          if twrdCaption in RedrawWhat then begin
++            R := GetXPCaptionRect(Self, True, FDockableWindow.FCloseButton);
++            XPDrawCaption(DC, R);
++
++            { Line below caption }
++            if CSkin.SkinType = tbsOfficeXP then
++            SavePen := SelectObject(DC, CreatePen(PS_SOLID, 1, CSkin.RGBColor(cFace)))
++            else
++            SavePen := SelectObject(DC, CreatePen(PS_SOLID, 1, CSkin.RGBColor(cToolbar)));
++            MoveToEx(DC, R.Left, R.Bottom, nil);
++            LineTo(DC, R.Right+1, R.Bottom);
++            MoveToEx(DC, R.Left, R.Bottom+1, nil);
++            LineTo(DC, R.Right+1, R.Bottom+1);
++            DeleteObject(SelectObject(DC, SavePen));
++          end;
++        finally
++          if SaveIndex <> 0 then
++            RestoreDC(DC, SaveIndex);
++        end;
+ 
++        { Close button }
++        if FDockableWindow.FCloseButton then begin
++          R := GetXPCloseButtonRect(Self, True);
++          R2 := R;
++          InflateRect(R2, 0, -2);
++          Inc(R2.Left, 2);
++          Inc(R.Right, 2);
++          if twrdCaption in RedrawWhat then begin
++            SaveIndex := SaveDC(DC);
++            ExcludeClipRect(DC, R2.Left, R2.Top, R2.Right, R2.Bottom);
++
++            if CSkin.SkinType = tbsOfficeXP then
++             FillRect(DC, R, CapBrush);
++{            else
++            begin
++              SkinPen := CreatePen(PS_SOLID, 0, CSkin.RGBColor(cSelBarBorder));
++
++              SavePen := SelectObject(DC, SkinPen);
++              SaveBrush := SelectObject(DC, CapBrush);
++
++              Dec(R.Left);
++
++              RoundRect(DC, R.Left, r.Top, r.Right, r.Bottom, 5, 5);
++              FillRect(DC, Rect(R.Left, R.Top+1, R.Right-2, R.Bottom-1), CapBrush);
++              Inc(R.Left);
++              SelectObject(DC, SavePen);
++              SelectObject(DC, SaveBrush);
++              DeleteObject(SkinPen);
++            end;}
++
++            RestoreDC(DC, SaveIndex);
++
++            if CSkin.SkinType = tbsOfficeXP then
++            SavePen := SelectObject(DC, CreatePen(PS_SOLID, 1, CSkin.RGBColor(cFace)))
++            else
++            SavePen := SelectObject(DC, CreatePen(PS_SOLID, 1, CSkin.RGBColor(cToolbar)));
++            MoveToEx(DC, R.Left, R.Bottom, nil);
++            LineTo(DC, R.Right+1, R.Bottom);
++            MoveToEx(DC, R.Left, R.Bottom+1, nil);
++            LineTo(DC, R.Right+1, R.Bottom+1);
++            DeleteObject(SelectObject(DC, SavePen));
++          end;
++
++          if twrdCloseButton in RedrawWhat then begin
++            SelBrush := CreateSolidBrush(CSkin.RGBColor(cSelPushed));
++            SelBorder := CreateSolidBrush(CSkin.RGBColor(cSelItemBorder));
++
++            InflateRect(R2, 2, 2);
++            Inc(R2.Left, 2);
++
++            if CSkin.SkinType In [tbsWindowsXP, tbsNativeXP] then begin
++              Inc(R2.Top);
++              Dec(R2.Bottom);
++              Dec(R2.Right);
++            end;
++
++            if FCloseButtonDown then begin
++              FillRect(DC, r2, SelBrush);
++              FrameRect(DC, R2, SelBorder);
++            end
++            else
++             FillRect(Dc, r2, CapBrush);
++
++            if CSkin.SkinType in [tbsWindowsXP, tbsNativeXP] then begin
++              Dec(R2.Top);
++              Inc(R2.Bottom);
++              Inc(R2.Right);
++            end;
++            Dec(R2.Left, 2);
++
++            InflateRect(R2, -3, -3);
++            OffsetRect(r2, 1, 1);
++            DrawCloseButtonBitmap(DC, r2);
++
++            DeleteObject(SelBrush);
++            DeleteObject(SelBorder);
++          end;
++        end;
++      end;
++    finally
++      DeleteObject(BorderBrush);
++      DeleteObject(OtherBrush);
++      DeleteObject(FaceBrush);
++      DeleteObject(CapBrush);
++    end;
++  end
++  else //Skin Patch End
++   begin
+     Gradient := GradientCaptionsEnabled;
+ 
+     { Border }
+@@ -2449,6 +2941,7 @@
+             CloseButtonState[FCloseButtonDown]);
+       end;
+     end;
++   end;
+   finally
+     if not DrawToDC then
+       ReleaseDC(Handle, DC);
+@@ -2468,8 +2961,11 @@
+ 
+ constructor TTBCustomDockableWindow.Create(AOwner: TComponent);
+ begin
++  FSkin := DefaultSkin; //Skin Patch
++
+   inherited;
+ 
++  FSkin.RegisterDockable(Self); //Skin Patch
+   ControlStyle := ControlStyle +
+     [csAcceptsControls, csClickEvents, csDoubleClicks, csSetCaption] -
+     [csCaptureMouse{capturing is done manually}, csOpaque];
+@@ -2502,6 +2998,10 @@
+   FDockForms.Free;  { must be done after 'inherited' because Notification accesses FDockForms }
+   FFloatParent.Free;
+   UninstallHookProc(ToolbarHookProc);
++//Skin Patch Begin
++  if Assigned(FSkin) then
++   FSkin.UnRegisterDockable(Self);
++//Skin Patch End
+ end;
+ 
+ function TTBCustomDockableWindow.HasParent: Boolean;
+@@ -2633,9 +3133,9 @@
+ 
+ procedure TTBCustomDockableWindow.UpdateVisibility;
+ begin
+-  SetInactiveCaption(Floating and (not FHideWhenInactive and not ApplicationIsActive));
++  SetInactiveCaption (Floating and (not FHideWhenInactive and not ApplicationIsActive));
+   if HandleAllocated and (IsWindowVisible(Handle) <> GetShowingState) then
+-    Perform(CM_SHOWINGCHANGED, 0, 0);
++    Perform (CM_SHOWINGCHANGED, 0, 0);
+ end;
+ 
+ function IsTopmost(const Wnd: HWND): Boolean;
+@@ -2767,6 +3267,11 @@
+     else
+     if AComponent = FLastDock then
+       FLastDock := nil
++//Skin Patch Begin
++    else
++    if AComponent = FSkin then
++      Skin := DefaultSkin
++//Skin Patch End
+     else begin
+       RemoveFromList(FDockForms, AComponent);
+       if Assigned(FFloatParent) and (csDestroying in FFloatParent.ComponentState) and
+@@ -2860,7 +3365,7 @@
+   { Adjust coordinates if it was initially floating }
+   if not FSavedAtRunTime and not(csDesigning in ComponentState) and
+      (Parent is TTBFloatingWindowParent) then begin
+-    R := BoundsRect;
++            R := BoundsRect;
+     MapWindowPoints(TBValidToolWindowParentForm(Self).Handle, 0, R, 2);
+     BoundsRect := R;
+     MoveOnScreen(False);
+@@ -3173,14 +3678,15 @@
+   BottomRight.X := Z;
+   BottomRight.Y := Z;
+   if not LeftRight then begin
+-    Inc(TopLeft.X, DragHandleSizes[CloseButtonWhenDocked, DragHandleStyle]);
+-    //if FShowChevron then
+-    //  Inc(BottomRight.X, tbChevronSize);
++//Skin Patch Begin
++    Inc(TopLeft.X, DragHandleSizes[False, CloseButtonWhenDocked, DragHandleStyle]);
++//Skin Patch End
+   end
+   else begin
+-    Inc(TopLeft.Y, DragHandleSizes[CloseButtonWhenDocked, DragHandleStyle]);
+-    //if FShowChevron then
+-    //  Inc(BottomRight.Y, tbChevronSize);
++//Skin Patch Begin
++    Inc(TopLeft.Y, DragHandleSizes[(tboDockedCaptions in FSkin.Options),
++      CloseButtonWhenDocked, DragHandleStyle]);
++//Skin Patch End
+   end;
+ end;
+ 
+@@ -3197,6 +3703,9 @@
+ end;
+ 
+ procedure TTBCustomDockableWindow.GetFloatingNCArea(var TopLeft, BottomRight: TPoint);
++var
++  CSkin: TTBBaseSkin; //Skin Patch
++  Skinned: Boolean; //Skin Patch
+ begin
+   with GetFloatingBorderSize do begin
+     TopLeft.X := X;
+@@ -3205,6 +3714,19 @@
+       Inc(TopLeft.Y, GetSmallCaptionHeight);
+     BottomRight.X := X;
+     BottomRight.Y := Y;
++//Skin Patch Begin
++    If Assigned(FSkin) and not(FSkin.SkinType = tbsDisabled) then
++      CSkin := FSkin
++    else if not (DefaultSkin.SkinType = tbsDisabled) then
++      CSkin := DefaultSkin else CSkin := Nil;
++
++    Skinned := Assigned(CSkin);
++
++    If Skinned and (CSkin.SkinType = tbsOfficeXP) then begin
++      Dec(TopLeft.Y, 2);
++      Dec(BottomRight.Y, 1);
++    end;
++//Skin Patch End
+   end;
+ end;
+ 
+@@ -3212,7 +3734,10 @@
+ var
+   X, Y, Z: Integer;
+ begin
+-  Z := DragHandleSizes[CloseButtonWhenDocked, FDragHandleStyle] - 3;
++//Skin Patch Begin
++  Z := DragHandleSizes[(LeftRight) and (tboDockedCaptions in Skin.Options),
++                       CloseButtonWhenDocked, FDragHandleStyle] - 3;
++//Skin Patch End
+   if not LeftRight then begin
+     X := DockedBorderSize+1;
+     Y := DockedBorderSize;
+@@ -3220,6 +3745,13 @@
+   else begin
+     X := (ClientWidth + DockedBorderSize) - Z;
+     Y := DockedBorderSize+1;
++//Skin Patch Begin
++    if not (FSkin.SkinType = tbsDisabled) and
++       (tboDockedCaptions in Skin.Options) then begin
++      inc(y);
++      dec(x);
++    end;
++//Skin Patch End
+   end;
+   Result := Bounds(X, Y, Z, Z);
+ end;
+@@ -3236,7 +3768,11 @@
+     Result.X := DockedBorderSize2;
+     Result.Y := DockedBorderSize2;
+     if CurrentDock.FAllowDrag then begin
+-      Z := DragHandleSizes[FCloseButtonWhenDocked, FDragHandleStyle];
++//Skin Patch Begin
++      Z := DragHandleSizes[(CurrentDock.Position in PositionLeftOrRight) and
++                           (tboDockedCaptions in FSkin.Options),
++                           FCloseButtonWhenDocked, FDragHandleStyle];
++//Skin Patch End
+       if not(CurrentDock.Position in PositionLeftOrRight) then
+         Inc(Result.X, Z)
+       else
+@@ -3255,7 +3791,11 @@
+     with Message.CalcSize_Params^ do begin
+       InflateRect(rgrc[0], -DockedBorderSize, -DockedBorderSize);
+       if CurrentDock.FAllowDrag then begin
+-        Z := DragHandleSizes[FCloseButtonWhenDocked, FDragHandleStyle];
++//Skin Patch Begin
++        Z := DragHandleSizes[(CurrentDock.Position in PositionLeftOrRight) and
++                             (tboDockedCaptions in FSkin.Options),
++                             FCloseButtonWhenDocked, FDragHandleStyle];
++//Skin Patch End
+         if not(CurrentDock.Position in PositionLeftOrRight) then
+           Inc(rgrc[0].Left, Z)
+         else
+@@ -3280,7 +3820,11 @@
+       I := P.X - R.Left
+     else
+       I := P.Y - R.Top;
+-    if I < DockedBorderSize + DragHandleSizes[CloseButtonWhenDocked, DragHandleStyle] then begin
++//Skin Patch Begin
++    if I < DockedBorderSize + DragHandleSizes[(CurrentDock.Position in PositionLeftOrRight) and
++                                              (tboDockedCaptions in FSkin.Options),
++                                              CloseButtonWhenDocked, DragHandleStyle] then begin
++//Skin Patch End
+       SetCursor(LoadCursor(0, IDC_SIZEALL));
+       Message.Result := 1;
+       Exit;
+@@ -3302,6 +3846,7 @@
+   Brush: HBRUSH;
+   Clr: TColorRef;
+   UsingBackground, B: Boolean;
++  Skinned: Boolean; //Skin Patch
+ 
+   procedure DrawRaisedEdge(R: TRect; const FillInterior: Boolean);
+   const
+@@ -3325,9 +3870,17 @@
+     TempBmp := TBitmap.Create;
+     try
+       TempBmp.Handle := Bmp;
+-      SetTextColor(DC, clBlack);
+-      SetBkColor(DC, clWhite);
+-      SelectObject(DC, GetSysColorBrush(COLOR_BTNTEXT));
++//Skin Patch Begin
++      if VerticalDock and Skinned and
++         (tboDockedCaptions in FSkin.Options) then begin
++        SetTextColor(DC, clBlack);
++        SetBkColor(DC, clWhite);
++        SelectObject(DC, clWhite);
++      end else begin //Skin Patch End
++        SetTextColor(DC, clBlack);
++        SetBkColor(DC, clWhite);
++        SelectObject(DC, GetSysColorBrush(COLOR_BTNTEXT));
++      end;
+       BitBlt(DC, R2.Left, R2.Top, R2.Right - R2.Left, R2.Bottom - R2.Top,
+         TempBmp.Canvas.Handle, 0, 0, $00E20746 {ROP_DSPDxax});
+     finally
+@@ -3335,11 +3888,222 @@
+     end;
+   end;
+ 
++//Skin Patch Begin
++  procedure DrawXPEdge(R: TRect; const SkinType: TTBSkins;
++    const DrawDrag: Boolean );
++  const
++    FillMiddle: array[Boolean] of UINT = (0, BF_MIDDLE);
++  Var
++   Brush: HBrush;
++   fInc,
++   Value: Integer;
++  begin
++    if Docked and not UsingBackground then begin
++     if SkinType in [tbsWindowsXP, tbsNativeXP] then
++        Brush := CreateSolidBrush(ColorToRGB(Color))
++      else
++       if (Self is TTBCustomToolbar) and
++          TTBCustomToolbar(Self).MenuBar and
++          not (tboMenuTBColor in FSkin.Options) then
++         Brush := CreateSolidBrush(FSkin.RGBColor(cFace))
++        else
++         Brush := CreateSolidBrush(FSkin.RGBColor(cToolbar));
++
++      FillRect(DC, R, Brush);
++      DeleteObject(Brush);
++
++      if not DrawDrag then
++       exit;
++    end;
++
++    if SkinType = tbsNativeXP then begin
++      aTheme := OpenThemeData(0, ReBarThemeName);
++
++      if VerticalDock then
++        aPart := Integer(ReBarPart(RP_GRIPPERVERT))
++      else
++        aPart := Integer(ReBarPart(RP_GRIPPER));
++
++      aState := 0;
++
++      if VerticalDock then begin
++       Dec(R.Top, 2);
++       Dec(R.Left);
++      end
++      else begin
++       Dec(R.Top, 3);
++       Dec(R.Left, 2);
++       Inc(R.Bottom, 2);
++      end;
++
++      DrawThemeBackground(aTheme, DC, aPart, aState, R, nil);
++      CloseThemeData(aTheme);
++
++      Exit;
++    end;
++
++    If SkinType = tbsOfficeXP then begin
++     fInc := 2;
++
++     If VerticalDock then begin
++       If (Self is TTBCustomToolbar) and 
++          TTBCustomToolbar(Self).MenuBar then
++        Inc(R.Left, 3)
++       else
++        Inc(R.Left, 2);
++
++       Dec(R.Right, 3);
++
++       Value := R.Right;
++       R.Right := R.Left +1;
++      end
++     else
++      begin
++       If (Self is TTBCustomToolbar) and
++          TTBCustomToolbar(Self).MenuBar then begin
++        Inc(R.Top, 2);
++        Dec(R.Bottom, 2);
++       end else begin
++        Inc(R.Top, 2);
++        Dec(R.Bottom, 3);
++       end;
++
++       Value := R.Bottom;
++       R.Bottom := R.Top +1;
++      end;
++    end
++    else begin
++     fInc := 4;
++
++     If VerticalDock then begin
++       If (Self is TTBCustomToolbar) and
++          TTBCustomToolbar(Self).MenuBar then begin
++         Inc(R.Left, 3);
++         Dec(R.Right, 4);
++       end
++       else begin
++         Inc(R.Left);
++         Dec(R.Right);
++       end;
++
++       Inc(R.Top);
++       Inc(R.Bottom);
++
++       Value :=R.Right  +1;
++       R.Right := R.Left +2;
++      end
++     else
++      begin
++       If (Self is TTBCustomToolbar) and
++          TTBCustomToolbar(Self).MenuBar then begin
++         Inc(R.Top, 3);
++         Dec(R.Bottom, 4);
++       end
++       else begin
++         Inc(R.Top);
++         Dec(R.Bottom);
++       end;
++
++       Inc(R.Left);
++       Inc(R.Right);
++
++       Value := R.Bottom +1;
++       R.Bottom := R.Top +2;
++      end;
++    end;
++
++    Brush := CreateSolidBrush(FSkin.RGBColor(cDragHandle));
++
++    If VerticalDock Then
++     while R.Right <= Value do
++      begin
++       FillRect(DC, R, Brush);
++
++       Inc(R.Left, fInc);
++       Inc(R.Right, fInc);
++      end
++     else
++      while R.Bottom <= Value do
++       begin
++        FillRect(DC, R, Brush);
++
++        Inc(R.Top, fInc);
++        Inc(R.Bottom, fInc);
++       end;
++
++    DeleteObject(Brush);
++  end;
++
++  function GetXPCaptionRect(const AdjustForBorder: Boolean): TRect;
++  begin
++    Result := Rect(0, 0, ClientWidth, GetSmallCaptionHeight -2);
++    if AdjustForBorder then
++    begin
++      OffsetRect(Result, 2, 2);
++      Result.Right := Result.Right - 2;
++    end;
++  end;
++
++  procedure XPDrawCaption(const DC: HDC; const R: TRect);
++  { Draws a caption in XP style, taken from Win3DrawCaption }
++  const
++    FAlignment: Array [TAlignment] Of Byte =(DT_LEFT, DT_RIGHT, DT_CENTER);
++  var
++    R2: TRect;
++    SaveTextColor, SaveBkColor: TColorRef;
++    SaveFont: HFONT;
++    Cap: String;
++    FillBrush: HBRUSH;
++
++    function CaptionTextWidth: Integer;
++    var
++      Size: TSize;
++    begin
++      GetTextExtentPoint32(DC, PChar(Cap), Length(Cap), Size);
++      Result := Size.cx;
++    end;
++
++  begin
++    R2 := R;
++    FillBrush := CreateSolidBrush(FSkin.RGBColor(cDockBorderTitle));
++    Inc(r2.right, 2);
++    { Fill the rectangle }
++    FillRect(DC, R2, FillBrush);
++
++    if FCloseButtonWhenDocked then
++      Dec(R2.Right, R2.Bottom - 5);
++
++    Inc(r2.left, 2);
++    Dec(R2.Right);
++
++    SaveFont := SelectObject(DC, FSkin.CaptionFont.Handle);
++
++    { Draw the text }
++    SaveBkColor := SetBkColor(DC, FSkin.RGBColor(cDockBorderTitle));
++    SaveTextColor := SetTextColor(DC, Skin.RGBColor(cCaptionText));
++    DrawText(DC, PChar(Caption), Length(Caption), R2, DT_SINGLELINE or DT_NOPREFIX
++                                                   or DT_TOP or DT_END_ELLIPSIS or
++                                                   FAlignment[FDockTextAlign]);
++    SetTextColor(DC, SaveTextColor);
++    SetBkColor(DC, SaveBkColor);
++
++    SelectObject(DC, SaveFont);
++    DeleteObject(FillBrush);
++  end;
++//Skin Patch End
++
+ const
+   CloseButtonState: array[Boolean] of UINT = (0, DFCS_PUSHED);
++//Skin Patch Begin
++var
++  PColor: TColorRef;
++  SkinBrush: HBrush;
++//Skin Patch End
+ begin
+   if not Docked or not HandleAllocated then Exit;
+ 
++  Skinned := not (FSkin.SkinType = tbsDisabled); //Skin Patch
++
+   if not DrawToDC then
+     DC := GetWindowDC(Handle)
+   else
+@@ -3361,13 +4125,67 @@
+ 
+     { Border }
+     if BorderStyle = bsSingle then
+-      DrawRaisedEdge(R, False)
++//Skin Patch Begin
++      If Skinned then
++        case FSkin.SkinType Of
++          tbsNativeXP: begin
++                        aTheme := OpenThemeData(0, ReBarThemeName);
++                        aPart := Integer(RP_BAND);
++                        aState := 0;
++
++                        DrawThemeEdge(aTheme, DC, aPart, aState,
++                                      R, BDR_RAISEDINNER, BF_RECT, nil);
++                        DrawThemeBackground(aTheme, DC, aPart, aState, R, nil);
++                        CloseThemeData(aTheme);
++                       end;
++          tbsOfficeXP: FrameRect(DC, R, Brush);
++                  else DrawRaisedEdge(R, False);
++        end
++      else
++        DrawRaisedEdge(R, False)
++//Skin Patch End
+     else
+       FrameRect(DC, R, Brush);
+     R2 := R;
+     InflateRect(R2, -1, -1);
+-    if not UsingBackground then
+-      FrameRect(DC, R2, Brush);
++    if not UsingBackground then begin
++//Skin Patch Begin
++      if Skinned then begin
++        case FSkin.SkinType of
++          tbsNativeXP,
++          tbsWindowsXP: FrameRect(DC, R2, Brush);
++           tbsOfficeXP: begin
++                         if Docked then begin
++                            if (Self is TTBCustomToolbar) and
++                               TTBCustomToolbar(Self).MenuBar and
++                               not (tboMenuTBColor in FSkin.Options) then
++                             PColor := FSkin.RGBColor(cFace)
++                            else
++                             PColor := FSkin.RGBColor(cToolbar);
++
++                           SkinBrush := CreateSolidBrush(PColor);
++                           FrameRect(DC, R2, SkinBrush);
++                           DeleteObject(SkinBrush);
++
++                           if (PColor = FSkin.RGBColor(cFace)) and
++                              (not ((Self is TTBCustomToolbar) and
++                                    TTBCustomToolbar(Self).MenuBar)) then
++                             PColor := FSkin.RGBColor(cToolbar)
++                            else
++                             PColor := FSkin.RGBColor(cFace);
++
++                           // RoundRect will cause flickering, so using SetPixelV
++                           SetPixelV(DC, R2.Left, R2.Top, PColor);
++                           SetPixelV(DC, R2.Left, R2.Bottom -1, PColor);
++                           SetPixelV(DC, R2.Right -1, R2.Top, PColor);
++                           SetPixelV(DC, R2.Right -1, R2.Bottom -1, PColor);
++                         end;
++                        end;
++        end;
++      end
++      else FrameRect(DC, R2, Brush);
++    end;
++//Skin Patch End
+ 
+     { Draw the Background }
+     if UsingBackground then begin
+@@ -3389,14 +4207,30 @@
+     end;
+ 
+     { The drag handle at the left, or top }
+-    if CurrentDock.FAllowDrag then begin
++//Skin Patch Begin
++    if CurrentDock.FAllowDrag or
++       (Skinned and ((tboDockedCaptions in FSkin.Options) and VerticalDock)) then
++    begin
++//Skin Patch End
+       SaveIndex := SaveDC(DC);
+       if not VerticalDock then
+         Y2 := ClientHeight
+       else
+         Y2 := ClientWidth;
+       Inc(Y2, DockedBorderSize);
+-      S := DragHandleSizes[FCloseButtonWhenDocked, FDragHandleStyle];
++//Skin Patch Begin
++      S := DragHandleSizes[(tboDockedCaptions in FSkin.Options)
++                           and VerticalDock,
++                           FCloseButtonWhenDocked, FDragHandleStyle];
++      if (tboDockedCaptions in FSkin.Options) and VerticalDock then
++      begin
++        R := GetXPCaptionRect(True);
++        InflateRect(R, 1, 1);
++        DrawXPEdge(R, FSkin.SkinType, False);
++        InflateRect(R, -1, -1);
++        XPDrawCaption(DC, R);
++      end else begin
++//Skin Patch End
+       if FDragHandleStyle <> dhNone then begin
+         Y3 := Y2;
+         X := DockedBorderSize + DragHandleXOffsets[FCloseButtonWhenDocked, FDragHandleStyle];
+@@ -3414,11 +4248,23 @@
+             R2 := Rect(X, Y+YO, X+3, Y2-YO)
+           else
+             R2 := Rect(Y+YO, X, Y3-YO, X+3);
+-          DrawRaisedEdge(R2, True);
+-          if not VerticalDock then
+-            SetPixelV(DC, X, Y2-1-YO, Clr)
+-          else
+-            SetPixelV(DC, Y3-1-YO, X, Clr);
++//Skin Patch Begin
++          if Skinned then begin
++            case FSkin.SkinType Of
++              tbsOfficeXP,
++              tbsNativeXP,
++              tbsWindowsXP: DrawXPEdge(R2, FSkin.SkinType, True);
++            end;
++          end
++          else begin //Skin Patch End
++            DrawRaisedEdge(R2, True);
++
++            if not VerticalDock then
++              SetPixelV(DC, X, Y2-1-YO, Clr)
++            else
++              SetPixelV(DC, Y3-1-YO, X, Clr);
++          end;
++
+           ExcludeClipRect(DC, R2.Left, R2.Top, R2.Right, R2.Bottom);
+           Inc(X, 3);
+         end;
+@@ -3430,16 +4276,38 @@
+         else
+           R2 := Rect(DockedBorderSize, DockedBorderSize,
+             Y2, DockedBorderSize+S);
+-        FillRect(DC, R2, Brush);
++//Skin Patch Begin
++        If Skinned  then
++          DrawXPEdge(R2, FSkin.SkinType, False)
++        else
++          FillRect(DC, R2, Brush);
++      end;
++//Skin Patch End
+       end;
+       RestoreDC(DC, SaveIndex);
+       { Close button }
+       if FCloseButtonWhenDocked then begin
+         R2 := GetDockedCloseButtonRect(VerticalDock);
+-        if FCloseButtonDown then
+-          DrawEdge(DC, R2, BDR_SUNKENOUTER, BF_RECT)
++        if FCloseButtonDown then begin
++//Skin Patch Begin
++          if not Skinned then
++           DrawEdge(DC, R2, BDR_SUNKENOUTER, BF_RECT)
++//Skin Patch End
++        end
+         else if FCloseButtonHover then
++//Skin Patch Begin
++         if Skinned then begin
++           Brush := CreateSolidBrush(FSkin.RGBColor(cSelBar));
++           FillRect(DC, R2, Brush);
++           DeleteObject(Brush);
++
++           Brush := CreateSolidBrush(FSkin.RGBColor(cSelBarBorder));
++           FrameRect(DC, R2, Brush);
++           DeleteObject(Brush);
++          end
++         else //Skin Patch End
+           DrawRaisedEdge(R2, False);
++
+         InflateRect(R2, -2, -2);
+         if FCloseButtonDown then
+           OffsetRect(R2, 1, 1);
+@@ -3556,7 +4424,10 @@
+ begin
+   inherited;
+   if Parent is TTBFloatingWindowParent then
+-    TTBFloatingWindowParent(Parent).Caption := Caption;
++    TTBFloatingWindowParent(Parent).Caption := Caption
++//Skin Patch Begin
++  else if (tboDockedCaptions in Skin.Options) then RedrawNCArea;
++//Skin Patch End
+ end;
+ 
+ procedure TTBCustomDockableWindow.CMVisibleChanged(var Message: TMessage);
+@@ -4943,16 +5814,27 @@
+   end;
+ end;
+ 
+-(*function TTBCustomDockableWindow.GetVersion: TToolbar97Version;
++//Skin Patch Begin
++procedure TTBCustomDockableWindow.SetSkin(Value: TTBBaseSkin);
+ begin
+-  Result := Toolbar97VersionPropText;
+-end;
++  if HandleAllocated and (FSkin <> Value) then begin
++    if Assigned(FSkin) then
++     FSkin.FreeNotification(Self);
+ 
+-procedure TTBCustomDockableWindow.SetVersion(const Value: TToolbar97Version);
+-begin
+-  { write method required for the property to show up in Object Inspector }
+-end;*)
++    if Assigned(FSkin) then   //Should always be assigned, but just in case
++      FSkin.UnRegisterDockable(Self);
+ 
++    if Assigned(Value) then
++     FSkin := Value else FSkin := DefaultSkin;
++
++    if Assigned(FSkin) then   //Should always be assigned, but just in case
++     FSkin.RegisterDockable(Self);
++
++    RedrawNCArea;
++    Invalidate;
++  end;
++end;
++//Skin Patch End
+ 
+ { TTBBackground }
+ 
+@@ -5143,7 +6025,6 @@
+   end;
+ end;
+ 
+-
+ { Global procedures }
+ 
+ procedure TBCustomLoadPositions(const OwnerComponent: TComponent;
+@@ -5403,4 +6284,9 @@
+   end;
+ end;
+ 
++initialization
++  CaptionFont := TFont.Create; //Create the font for the caption
++finalization
++  CaptionFont.Free; //we don't need the caption font any more
+ end.
++
+Index: TB2ExtItems.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2ExtItems.pas,v
+retrieving revision 1.51
+diff -u -r1.51 TB2ExtItems.pas
+--- TB2ExtItems.pas	19 Mar 2003 21:23:45 -0000	1.51
++++ TB2ExtItems.pas	14 Jun 2003 15:14:32 -0000
+@@ -6,17 +6,20 @@
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
+-  $jrsoftware: tb2k/Source/TB2ExtItems.pas,v 1.51 2003/03/19 21:23:45 jr Exp $
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
++  $jrsoftware: tb2k/Source/TB2ExtItems.pas,v 1.52.2.1 2003/06/08 04:33:40 jr Exp $
+ }
+ 
++
+ interface
+ 
+ {$I TB2Ver.inc}
+ 
+ uses
+-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+-  StdCtrls, CommCtrl, Menus, ActnList,
+-  TB2Item;
++  Windows, Messages, SysUtils, Classes, Graphics, Forms,
++  StdCtrls, ActnList, Controls,
++  TB2Item; //Skin Patch
+ 
+ type
+   TTBEditItemOption = (tboUseEditWhenVertical);
+@@ -186,12 +189,12 @@
+     property OnClick;
+     property OnSelect;
+   end;
+-  
+ 
+ implementation
+ 
+ uses
+-  TB2Common, TB2Consts;
++  TB2Common,
++  TBSkinShared, TBSkinPlus; //Skin Patch
+ 
+ const
+   EditMenuTextMargin = 3;
+@@ -410,7 +413,7 @@
+ procedure TTBEditItem.DoBeginEdit(Viewer: TTBEditItemViewer);
+ begin
+   if Assigned(FOnBeginEdit) then
+-    FOnBeginEdit(Self, Viewer, Viewer.EditControl);
++    FOnBeginEdit (Self, Viewer, Viewer.EditControl);
+ end;
+ 
+ function TTBEditItem.IsEditOptionsStored: Boolean;
+@@ -575,6 +578,11 @@
+     Inc(AHeight, DivRoundUp(AHeight, 4));
+   if AHeight < MinHeight then
+     AHeight := MinHeight;
++//Skin Patch Begin
++  If not (View.Skin = nil) and (View.Skin.SkinType = tbsOfficeXP) and
++     not View.IsToolbar then
++   Inc(AHeight, 2);
++//Skin Patch End
+ end;
+ 
+ function TTBEditItemViewer.CaptionShown: Boolean;
+@@ -597,10 +605,27 @@
+   S: String;
+   R: TRect;
+   W: Integer;
++//Skin Patch Begin
++  CSkin: TTBBaseSkin;
++  Skinned: Boolean;
++//Skin Patch End
+ begin
+   Item := TTBEditItem(Self.Item);
+   R := ClientAreaRect;
+ 
++//Skin Patch Begin
++  If Assigned(View) and Assigned(View.Skin) and
++     not(View.Skin.SkinType = tbsDisabled) then
++   CSkin := View.Skin
++  else
++   if not (DefaultSkin.SkinType = tbsDisabled) then
++    CSkin := DefaultSkin else CSkin := nil;
++
++  Skinned := Assigned(CSkin);
++ if not Skinned then
++ begin
++//Skin Patch End
++
+   { Caption }
+   if not IsToolbarStyle and (Item.EditCaption <> '') then begin
+     S := Item.EditCaption;
+@@ -635,6 +660,122 @@
+     Canvas.Font.Color := TextColors[Item.Enabled];
+     DrawText(Canvas.Handle, PChar(S), Length(S), R, DT_SINGLELINE or DT_NOPREFIX);
+   end;
++ end
++ else
++//Skin Patch Begin
++ begin
++   Inc(R.Left);
++
++   { Caption }
++   if not IsToolbarStyle and (Item.EditCaption <> '') then
++   with CSkin do
++   begin
++     S := Item.EditCaption;
++     W := GetTextWidth(Canvas.Handle, S, True) + EditMenuTextMargin * 2;
++     R.Right := R.Left + W;
++
++     if (ImgBackStyle = tbimsDefault) and (SkinType = tbsOfficeXP) then
++     begin
++       Dec(R.Left);
++
++       if View.ViewerCount >0 then
++         R.Right := View.Viewers[0].BoundsRect.Bottom +2
++       else
++         R.Right := 0;
++
++       Canvas.Brush.Color := CSkin.Colors.tcImageList;
++       Canvas.FillRect(R);
++
++       R.Right := R.Left + W;
++       Inc(R.Left);
++     end;
++
++     if (SkinType = tbsOfficeXP) or (SkinType = tbsWindowsXP) and
++        (ImgBackStyle <> tbimsDefault) and View.IsPopup then
++     if View.ViewerCount >0 then
++       Inc(R.Right, View.Viewers[0].BoundsRect.Bottom + 5);
++
++     if IsSelected then
++     begin
++       if (tboGradSelItem in CSkin.Options) then
++         FillGradient(Canvas.Handle, R, RGBColor(cGradStart), RGBColor(cGradEnd), Gradient)
++       else
++       begin
++         Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++         Canvas.FillRect(R);
++       end;
++
++       Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++       Canvas.FrameRect(R);
++     end;
++
++     Canvas.Brush.Style := bsClear;
++
++     if SkinType = tbsOfficeXP then
++       Canvas.Font.Color := Colors.tcText;
++
++     if (SkinType = tbsOfficeXP) or (SkinType = tbsWindowsXP) and
++       (ImgBackStyle <> tbimsDefault) and View.IsPopup then
++     if View.ViewerCount >0 then
++       Inc(R.Left, View.Viewers[0].BoundsRect.Bottom +2);
++
++     Inc(R.Left, EditMenuTextMargin);
++     DrawItemCaption(Canvas, R, S, UseDisabledShadow, DT_SINGLELINE or
++       DT_LEFT or DT_VCENTER);
++     R := ClientAreaRect;
++     Inc(R.Left, W + EditMenuMidWidth);
++   end;
++
++   if (View.Skin <> nil) and ((View.Skin.SkinType = tbsOfficeXP)
++     or (View.Skin.ImgBackStyle <> tbimsDefault)) and View.IsPopup then
++   begin
++     if View.ViewerCount >0 then
++       Inc(R.Left, View.Viewers[0].BoundsRect.Bottom);
++
++     Dec(R.Right);
++   end
++   else
++     Inc(R.Top);
++
++   { Border }
++
++   if IsSelected and Item.Enabled then
++   begin
++     Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++     Canvas.FrameRect(R);
++   end
++   else
++   begin
++     if (CSkin.SkinType in [tbsNativeXp, tbsWindowsXp]) then
++       Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder
++     else
++       Canvas.Brush.Color := clBtnFace;
++
++     Canvas.FrameRect(R);
++   end;
++
++   InflateRect(R, -1, -1);
++
++   { Fill }
++   Canvas.Brush.Color := FillColors[Item.Enabled];
++   Canvas.FillRect(R);
++   InflateRect(R, -1, -1);
++
++   if IsToolbarStyle then
++     Inc(R.Top)
++   else
++     Inc(R.Top, 2);
++
++   { Text }
++   if Item.Text <> '' then
++   begin
++     S := Item.Text;
++     Canvas.Brush.Style := bsClear;
++     Canvas.Font.Color := TextColors[Item.Enabled];
++     DrawText(Canvas.Handle, PChar(S), Length(S), R, DT_SINGLELINE or DT_NOPREFIX);
++   end;
++ end;
++//Skin Patch End
+ end;
+ 
+ procedure TTBEditItemViewer.GetCursor(const Pt: TPoint; var ACursor: HCURSOR);
+@@ -749,6 +890,16 @@
+     Exit;
+   end;
+ 
++//Skin Patch Begin
++  If not (View.Skin = nil) and ((View.Skin.SkinType = tbsOfficeXP)
++     or (View.Skin.ImgBackStyle <> tbimsDefault)) then begin
++    if View.IsPopup then
++     if View.ViewerCount >0 then
++       Inc(R.Left, View.Viewers[0].BoundsRect.Bottom);
++
++    Inc(R.Top);
++  end;
++//Skin Patch End
+   ActiveWnd := GetActiveWindow;
+   FocusWnd := GetFocus;
+ 
+@@ -818,7 +969,7 @@
+   if Item.Enabled then begin
+     { Close any delay-close popup menus before entering the edit loop }
+     View.CloseChildPopups;
+-    if EditLoop(CapHandle) then begin
++    if EditLoop(EventData.CaptureWnd) then begin
+       EventData.CancelLoop := True;
+       if ecsAccept in FEditControlStatus then
+         View.GivePriority(Self);
+Index: TB2Item.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2Item.pas,v
+retrieving revision 1.236
+diff -u -r1.236 TB2Item.pas
+--- TB2Item.pas	19 Mar 2003 22:06:51 -0000	1.236
++++ TB2Item.pas	14 Jun 2003 15:15:05 -0000
+@@ -2,11 +2,13 @@
+ 
+ {
+   Toolbar2000
+-  Copyright (C) 1998-2002 by Jordan Russell
++  Copyright (C) 1998-2003 by Jordan Russell
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
+-  $jrsoftware: tb2k/Source/TB2Item.pas,v 1.236 2003/03/19 22:06:51 jr Exp $
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
++  $jrsoftware: tb2k/Source/TB2Item.pas,v 1.241.2.6 2003/06/08 18:35:44 jr Exp $
+ }
+ 
+ interface
+@@ -21,8 +23,9 @@
+     XP with themes enabled. }
+ 
+ uses
+-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+-  StdCtrls, CommCtrl, Menus, ActnList, ImgList, TB2Anim;
++  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms,
++  Menus, ActnList, ImgList, TB2Anim,
++  TBSkinPlus; //Skin Patch
+ 
+ type
+   TTBCustomItem = class;
+@@ -59,6 +62,7 @@
+   TTBItemDisplayMode = (nbdmDefault, nbdmTextOnly, nbdmTextOnlyInMenus, nbdmImageAndText);
+   TTBItemEventData = record
+     RootView: TTBView;
++    CaptureWnd: HWND;
+     MouseDownOnMenu, CancelLoop: Boolean;
+     DoneActionData: PTBDoneActionData;
+   end;
+@@ -74,6 +78,7 @@
+   TTBPopupEvent = procedure(Sender: TTBCustomItem; FromLink: Boolean) of object;
+   TTBSelectEvent = procedure(Sender: TTBCustomItem; Viewer: TTBItemViewer;
+     Selecting: Boolean) of object;
++  TTBPopupPosition = (tbpTop, tbpRight, tbpOther); //Skin Patch
+ 
+   ETBItemError = class(Exception);
+ 
+@@ -118,6 +123,7 @@
+     FSubMenuImagesChangeLink: TTBImageChangeLink;
+     FLinkSubitems: TTBCustomItem;
+     FVisible: Boolean;
++    FSkin: TTBBaseSkin; //Skin Patch .. For TTBPopupMenu usuage
+ 
+     procedure DoActionChange(Sender: TObject);
+     function ChangeImages(var AImages: TCustomImageList;
+@@ -270,6 +276,18 @@
+     procedure SetOnExecute(Value: TNotifyEvent); override;
+   end;
+ 
++  TTBBaseAccObject = class(TInterfacedObject, IDispatch)
++  public
++    procedure ClientIsDestroying; virtual; abstract;
++    { IDispatch }
++    function GetTypeInfoCount(out Count: Integer): HResult; stdcall;
++    function GetTypeInfo(Index, LocaleID: Integer; out TypeInfo): HResult; stdcall;
++    function GetIDsOfNames(const IID: TGUID; Names: Pointer;
++      NameCount, LocaleID: Integer; DispIDs: Pointer): HResult; stdcall;
++    function Invoke(DispID: Integer; const IID: TGUID; LocaleID: Integer;
++      Flags: Word; var Params; VarResult, ExcepInfo, ArgErr: Pointer): HResult; stdcall;
++  end;
++
+   TTBItemViewer = class
+   private
+     FBoundsRect: TRect;
+@@ -280,11 +298,13 @@
+     FView: TTBView;
+     function GetIndex: Integer;
+   protected
++    FAccObjectInstance: TTBBaseAccObject; 
+     procedure CalcSize(const Canvas: TCanvas; var AWidth, AHeight: Integer);
+       virtual;
+     function CaptionShown: Boolean; dynamic;
+     procedure DrawItemCaption(const Canvas: TCanvas; ARect: TRect;
+-      const ACaption: String; ADrawDisabledShadow: Boolean; AFormat: UINT); virtual;
++      const ACaption: String; ADrawDisabledShadow: Boolean; AFormat: UINT;
++      const Disabled3D: Boolean = False); virtual;
+     procedure Entering; virtual;
+     function GetCaptionText: String; virtual;
+     procedure GetCursor(const Pt: TPoint; var ACursor: HCURSOR); virtual;
+@@ -292,7 +312,6 @@
+     function ImageShown: Boolean;
+     function IsRotated: Boolean;
+     function IsToolbarSize: Boolean;
+-    function IsToolbarStyle: Boolean;
+     function IsPtInButtonPart(X, Y: Integer): Boolean; virtual;
+     procedure KeyDown(var Key: Word; Shift: TShiftState;
+       var EventData: TTBItemEventData); virtual;
+@@ -317,6 +336,9 @@
+     property Show: Boolean read FShow;
+     property View: TTBView read FView;
+     constructor Create(AView: TTBView; AItem: TTBCustomItem); virtual;
++    destructor Destroy; override;
++    function GetAccObject: IDispatch;
++    function IsToolbarStyle: Boolean;
+     function ScreenToClient(const P: TPoint): TPoint;
+   end;
+   PTBItemViewerArray = ^TTBItemViewerArray;
+@@ -325,9 +347,9 @@
+   TTBViewOrientation = (tbvoHorizontal, tbvoVertical, tbvoFloating);
+   TTBEnterToolbarLoopOptions = set of (tbetMouseDown, tbetDropDownMenus,
+     tbetKeyboardControl);
+-  TTBViewState = set of (vsOpen, vsMouseInWindow, vsDrawInOrder, vsOppositePopup,
++  TTBViewState = set of (vsModal, vsMouseInWindow, vsDrawInOrder, vsOppositePopup,
+     vsIgnoreFirstMouseUp, vsShowAccels, vsDropDownMenus, vsNoAnimation);
+-  TTBViewStyle = set of (vsUseHiddenAccels, vsAlwaysShowHints);
++  TTBViewStyle = set of (vsMenuBar, vsUseHiddenAccels, vsAlwaysShowHints);
+   TTBViewTimerID = (tiOpen, tiClose, tiScrollUp, tiScrollDown);
+ 
+   TTBViewClass = class of TTBView;
+@@ -361,6 +383,7 @@
+     FSelected: TTBItemViewer;
+     FShowDownArrow: Boolean;
+     FShowUpArrow: Boolean;
++    FSkin: TTBBaseSkin; //Skin Patch
+     FState: TTBViewState;
+     FStyle: TTBViewStyle;
+     FUpdating: Integer;
+@@ -379,6 +402,7 @@
+       Action: TTBItemChangedAction; Index: Integer; Item: TTBCustomItem);
+     procedure LinkNotification(Sender: TTBCustomItem; Relayed: Boolean;
+       Action: TTBItemChangedAction; Index: Integer; Item: TTBCustomItem);
++    procedure NotifyFocusEvent;
+     procedure RecreateItemViewer(const I: Integer);
+     procedure Scroll(ADown: Boolean);
+     procedure SetCustomizing(Value: Boolean);
+@@ -389,6 +413,7 @@
+     procedure StopTimer(const ATimer: TTBViewTimerID);
+     procedure UpdateCurParentItem;
+   protected
++    FAccObjectInstance: TTBBaseAccObject;
+     procedure AutoSize(AWidth, AHeight: Integer); virtual;
+     function CalculatePositions(const CanMoveControls: Boolean;
+       const AOrientation: TTBViewOrientation;
+@@ -404,14 +429,14 @@
+     function GetMDISystemMenuItem: TTBCustomItem; virtual;
+     function GetFont: TFont; virtual;
+     function GetParentToolbarView: TTBView;
++    function GetRootView: TTBView;
++    function HandleWMGetObject(var Message: TMessage): Boolean;
+     procedure InitiateActions;
+     procedure KeyDown(var Key: Word; Shift: TShiftState;
+       var EventData: TTBItemEventData); virtual;
+     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
+     function OpenChildPopup(const SelectFirstItem: Boolean): Boolean;
+     procedure SetAccelsVisibility(AShowAccels: Boolean);
+-    property OpenViewer: TTBItemViewer read FOpenViewer;
+-    property OpenViewerView: TTBView read FOpenViewerView;
+   public
+     constructor CreateView(AOwner: TComponent; AParentView: TTBView;
+       AParentItem: TTBCustomItem; AWindow: TWinControl;
+@@ -426,6 +451,7 @@
+     procedure EnterToolbarLoop(Options: TTBEnterToolbarLoopOptions);
+     function Find(Item: TTBCustomItem): TTBItemViewer;
+     function FirstSelectable: TTBItemViewer;
++    function GetAccObject: IDispatch;
+     procedure GetOffEdgeControlList(const List: TList);
+     procedure GivePriority(AViewer: TTBItemViewer);
+     function HighestPriorityViewer: TTBItemViewer;
+@@ -456,8 +482,11 @@
+     property Options: TTBViewOptions read FOptions write FOptions;
+     property ParentView: TTBView read FParentView;
+     property ParentItem: TTBCustomItem read FParentItem;
++    property OpenViewer: TTBItemViewer read FOpenViewer;
++    property OpenViewerView: TTBView read FOpenViewerView;
+     property Orientation: TTBViewOrientation read FOrientation write FOrientation;
+     property Selected: TTBItemViewer read FSelected write SetSelected;
++    property Skin: TTBBaseSkin read FSkin write FSkin; //Skin Patch
+     property State: TTBViewState read FState;
+     property Style: TTBViewStyle read FStyle write FStyle;
+     property UsePriorityList: Boolean read FUsePriorityList write SetUsePriorityList;
+@@ -584,12 +613,22 @@
+ 
+   TTBPopupWindow = class(TCustomControl)
+   private
++    FAccelsVisibilitySet: Boolean;
+     FAnimationDirection: TTBAnimationDirection;
+     FView: TTBView;
++//Skin Patch Begin
++    FSkin: TTBBaseSkin;
++    FShadowPR, //Popup Right Shadow
++    FShadowPB, //Popup Bottom Shadow
++    FShadowIR, //Item Right Shadow
++    FShadowIB: TShadow; //Item Bottom Shadow
++    procedure WMTB2kAnimationEnded(var Message: TMessage); message WM_TB2K_ANIMATIONENDED;
++//Skin Patch End
+     procedure CMHintShow(var Message: TCMHintShow); message CM_HINTSHOW;
+     procedure CMShowingChanged(var Message: TMessage); message CM_SHOWINGCHANGED;
+     procedure WMClose(var Message: TWMClose); message WM_CLOSE;
+     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
++    procedure WMGetObject(var Message: TMessage); message WM_GETOBJECT;
+     procedure WMNCCalcSize(var Message: TWMNCCalcSize); message WM_NCCALCSIZE;
+     procedure WMNCPaint(var Message: TMessage); message WM_NCPAINT;
+     procedure WMPaint(var Message: TWMPaint); message WM_PAINT;
+@@ -598,6 +637,7 @@
+     procedure WMTB2kStepAnimation(var Message: TMessage); message WM_TB2K_STEPANIMATION;
+   protected
+     procedure CreateParams(var Params: TCreateParams); override;
++    procedure CreateWnd; override;
+     procedure DestroyWindowHandle; override;
+     function GetViewClass: TTBViewClass; dynamic;
+     procedure Paint; override;
+@@ -609,6 +649,7 @@
+     procedure BeforeDestruction; override;
+ 
+     property View: TTBView read FView;
++    property Skin: TTBBaseSkin read FSkin write FSkin; //Skin Patch
+   end;
+ 
+   ITBItems = interface
+@@ -636,6 +677,7 @@
+   TTBPopupMenu = class(TPopupMenu, ITBItems)
+   private
+     FItem: TTBRootItem;
++    FSkin: TTBBaseSkin; //Skin Patch
+     //procedure SetItems(Value: TTBCustomItem);
+     function GetImages: TCustomImageList;
+     function GetItems: TTBCustomItem;
+@@ -645,6 +687,7 @@
+     procedure SetImages(Value: TCustomImageList);
+     procedure SetLinkSubitems(Value: TTBCustomItem);
+     procedure SetOptions(Value: TTBItemOptions);
++    procedure SetSkin(const Value: TTBBaseSkin); //Skin Patch
+   protected
+     {$IFNDEF JR_D5}
+     procedure DoPopup(Sender: TObject);
+@@ -652,6 +695,7 @@
+     procedure GetChildren(Proc: TGetChildProc; Root: TComponent); override;
+     function GetRootItemClass: TTBRootItemClass; dynamic;
+     procedure SetChildOrder(Child: TComponent; Order: Integer); override;
++    procedure Notification(AComponent: TComponent; Operation: TOperation); override; //Skin Patch
+   public
+     constructor Create(AOwner: TComponent); override;
+     destructor Destroy; override;
+@@ -661,6 +705,7 @@
+     property Images: TCustomImageList read GetImages write SetImages;
+     property Items: TTBRootItem read FItem;
+     property LinkSubitems: TTBCustomItem read GetLinkSubitems write SetLinkSubitems;
++    property Skin: TTBBaseSkin read FSkin write SetSkin; //Skin Patch
+     property Options: TTBItemOptions read GetOptions write SetOptions default [];
+   end;
+ 
+@@ -737,31 +782,46 @@
+ 
+   WM_TB2K_CLICKITEM = WM_USER + $100;
+ 
+-procedure TBBeginCapture(const W: HWND);
+-procedure TBEndCapture;
+ procedure TBInitToolbarSystemFont;
+ procedure TBRegisterControlItem;
+ 
+ var
+-  CapHandle: HWND;
+   ToolbarFont: TFont;
+ 
+-
+ implementation
+ 
+ uses
+-  MMSYSTEM, TB2Consts, TB2Common, IMM;
++  MMSYSTEM, TB2Consts, TB2Common, IMM, TB2Acc,
++  TB2Dock, TB2Toolbar, TBSkinShared; //Skin Patch
+ 
+ var
+   LastPos: TPoint;
+-  CapCount: Integer = 0;
+ 
+ threadvar
+   ThreadItemCount: Integer;
+   ClickWnd: HWND;
+   ClickedItem: TTBCustomItem;
++//Skin Patch Begin
++  KeyHover: Boolean;
++  ShowShadow: Boolean;
++  PopupPosition: TTBPopupPosition;
++//Skin Patch End
+ 
+ type
++  TTBModalHandler = class
++  private
++    FCreatedWnd: Boolean;
++    FInited: Boolean;
++    FWnd: HWND;
++  public
++    constructor Create(AExistingWnd: HWND);
++    destructor Destroy; override;
++    procedure Loop(const RootView: TTBView; const AMouseDown, ADropDownMenus,
++      KeyboardControl, TrackRightButton: Boolean;
++      var DoneActionData: TTBDoneActionData);
++    property Wnd: HWND read FWnd;
++  end;
++
+   PItemChangedNotificationData = ^TItemChangedNotificationData;
+   TItemChangedNotificationData = record
+     Proc: TTBItemChangedProc;
+@@ -774,34 +834,9 @@
+ const
+   ViewTimerBaseID = 9000;
+ 
+-procedure PopupMessageLoop(const RootView: TTBView;
+-  const AMouseDown, ADropDownMenus, KeyboardControl, TrackRightButton: Boolean;
+-  var DoneActionData: TTBDoneActionData); forward;
+-
+ 
+ { Misc. }
+ 
+-procedure TBBeginCapture(const W: HWND);
+-begin
+-  if CapCount = 0 then begin
+-    CapHandle := W;
+-    LastPos := SmallPointToPoint(TSmallPoint(GetMessagePos()));
+-    SetCapture(CapHandle);
+-    SetCursor(LoadCursor(0, IDC_ARROW));
+-  end;
+-  Inc(CapCount);
+-end;
+-
+-procedure TBEndCapture;
+-begin
+-  Dec(CapCount);
+-  if CapCount = 0 then begin
+-    if GetCapture = CapHandle then
+-      ReleaseCapture;
+-    CapHandle := 0;
+-  end;
+-end;
+-
+ var
+   ControlItemRegistered: Boolean = False;
+ 
+@@ -1280,29 +1315,28 @@
+ 
+ procedure TTBCustomItem.Click;
+ begin
+-  if Enabled then begin
+-    { Following code based on D6's TMenuItem.Click }
+-    {$IFDEF JR_D6}
+-    if (not Assigned(ActionLink) and AutoCheck) or
+-       (Assigned(ActionLink) and not ActionLink.IsAutoCheckLinked and AutoCheck) then
+-    {$ELSE}
+-    if AutoCheck then
+-    {$ENDIF}
+-      Checked := not Checked;
+-    { Following code based on D4's TControl.Click }
+-    { Call OnClick if assigned and not equal to associated action's OnExecute.
+-      If associated action's OnExecute assigned then call it, otherwise, call
+-      OnClick. }
+-    if Assigned(FOnClick) and (Action <> nil) and
+-       not MethodsEqual(TMethod(FOnClick), TMethod(Action.OnExecute)) then
+-      FOnClick(Self)
+-    else
+-    if not(csDesigning in ComponentState) and (ActionLink <> nil) then
+-      ActionLink.Execute {$IFDEF JR_D6}(Self){$ENDIF}
+-    else
+-    if Assigned(FOnClick) then
+-      FOnClick(Self);
+-  end;
++  ProcessPaintMessages; //Skin Patch
++  { Following code based on D6's TMenuItem.Click }
++  {$IFDEF JR_D6}
++  if (not Assigned(ActionLink) and AutoCheck) or
++     (Assigned(ActionLink) and not ActionLink.IsAutoCheckLinked and AutoCheck) then
++  {$ELSE}
++  if AutoCheck then
++  {$ENDIF}
++    Checked := not Checked;
++  { Following code based on D4's TControl.Click }
++  { Call OnClick if assigned and not equal to associated action's OnExecute.
++    If associated action's OnExecute assigned then call it, otherwise, call
++    OnClick. }
++  if Assigned(FOnClick) and (Action <> nil) and
++     not MethodsEqual(TMethod(FOnClick), TMethod(Action.OnExecute)) then
++    FOnClick(Self)
++  else
++  if not(csDesigning in ComponentState) and (ActionLink <> nil) then
++    ActionLink.Execute {$IFDEF JR_D6}(Self){$ENDIF}
++  else
++  if Assigned(FOnClick) then
++    FOnClick(Self);
+ end;
+ 
+ function TTBCustomItem.GetItem(Index: Integer): TTBCustomItem;
+@@ -1543,7 +1577,29 @@
+   ParentItemRect: TRect;
+   MonitorRect: TRect;
+   AnimDir: TTBAnimationDirection;
+-begin
++//Skin Patch Begin
++  CSkin: TTBBaseSkin;
++  Skinned: Boolean;
++ //Skin Patch End
++begin
++//Skin Patch Begin
++  CSkin := Nil;
++  PopupPosition := tbpOther;
++
++  If Assigned(ParentView) and Assigned(ParentView.FSkin) and
++     not(ParentView.FSkin.SkinType = tbsDisabled) then
++    CSkin := ParentView.FSkin
++  else if Assigned(FSkin) and not (FSkin.SkinType = tbsDisabled) then
++    CSkin := FSkin
++  else if not (DefaultSkin.SkinType = tbsDisabled) then
++    CSkin := DefaultSkin;
++
++  Skinned := Assigned(CSkin);
++
++  if Skinned then PopupMenuWindowNCSize := CSkin.GetPopupNCSize
++  else PopupMenuWindowNCSize := 3;
++
++//Skin Patch End
+   EventItem := ItemContainingItems(Self);
+   if EventItem <> Self then
+     EventItem.DoPopup(Self, True);
+@@ -1565,7 +1621,8 @@
+       Result.View.FIsToolbar := True;
+       Result.View.Style := Result.View.Style +
+         (ChevronParentView.Style * [vsAlwaysShowHints]);
+-      Result.Color := clBtnFace;
++      if not Skinned or Skinned and (CSkin.SkinType = tbsDisabled) then
++        Result.Color := clBtnFace;
+     end;
+ 
+     { Calculate ParentItemRect, and MonitorRect (the rectangle of the monitor
+@@ -1654,7 +1711,10 @@
+       { Only place it above the parent item if it isn't going to go off the
+         top of the monitor }
+       if Y2 >= MonitorRect.Top then
++      begin
+         Y := Y2;
++        PopupPosition := tbpTop; //Skin Patch
++      end;
+     end;
+     { If it's still going off the bottom (which can be possible if a menu bar
+       was off the screen to begin with), clip it to the bottom of the monitor }
+@@ -1682,7 +1742,10 @@
+           if (CountObscured(X, Y2, W, H) < CountObscured(X, Y, W, H)) or
+              ((Y < ParentItemRect.Bottom) and (Y + H > ParentItemRect.Top) and
+               (X < ParentItemRect.Right) and (X + W > ParentItemRect.Left)) then
++          begin
+             Y := Y2;
++            PopupPosition := tbpTop; //Skin Patch
++          end;
+         end;
+         { Make sure a tall popup window doesn't overlap the parent item }
+         if (Y < ParentItemRect.Bottom) and (Y + H > ParentItemRect.Top) and
+@@ -1703,7 +1766,10 @@
+           if (CountObscured(X2, Y, W, H) < CountObscured(X, Y, W, H)) or
+              ((Y < ParentItemRect.Bottom) and (Y + H > ParentItemRect.Top) and
+               (X < ParentItemRect.Right) and (X + W > ParentItemRect.Left)) then
++          begin
+             X := X2;
++            PopupPosition := tbpRight; //Skin Patch
++          end;
+         end;
+         { Make sure a wide popup window doesn't overlap the parent item }
+         if (Y < ParentItemRect.Bottom) and (Y + H > ParentItemRect.Top) and
+@@ -1744,6 +1810,23 @@
+         X := MonitorRect.Left;
+     end;
+ 
++//Skin Patch Begin
++    if Assigned(ParentView) then begin
++      if not Assigned(ParentView.FSkin) then begin
++       if (not (tboPopupOverlap In DefaultSkin.Options)) then begin
++        Inc(X, 3); Inc(Y, 2);
++       end
++      end
++     else begin
++       if (not (tboPopupOverlap in ParentView.Skin.Options)) and
++                   (ParentView.Owner is TTBPopupWindow) and
++                   (not Assigned(ParentView.FChevronParentView)) then begin
++           Inc(X, 2); Inc(Y, 2);
++       end;
++     end;
++    end;
++//Skin Patch End
++
+     { Determine animation direction }
+     AnimDir := [];
+     if not PositionAsSubmenu then begin
+@@ -1762,6 +1845,27 @@
+       else
+         Include(AnimDir, tbadLeft);
+     end;
++//Skin Patch Begin
++//Adjust the position of the Popup if it's get called
++//from a Toolbar Item
++
++    If Skinned and not (CSkin.SkinType in [tbsWindowsXP, tbsNativeXP]) and
++       Assigned(ParentView) and ParentView.FIsToolbar then
++     if not (ParentView.FOrientation = tbvoVertical) then
++      begin
++       If PopupPosition = tbpTop then
++        Inc(Y, 2)
++       else
++        Dec(Y, 2);
++      end
++     else
++      begin
++       If PopupPosition = tbpRight then
++        Dec(X, 2)
++       else
++        Inc(X, 2);
++      end;
++//Skin Patch End
+     Result.FAnimationDirection := AnimDir;
+ 
+     Result.SetBounds(X, Y, W, H);
+@@ -1795,6 +1899,11 @@
+         Result.Visible := True;
+       end;
+     end;
++    CallNotifyWinEvent(EVENT_SYSTEM_MENUPOPUPSTART, Result.View.FWindow.Handle,
++      OBJID_CLIENT, CHILDID_SELF);
++    { Call NotifyFocusEvent now that the window is visible }
++    if Assigned(Result.View.Selected) then
++      Result.View.NotifyFocusEvent;
+   except
+     Result.Free;
+     raise;
+@@ -1804,18 +1913,27 @@
+ procedure TTBCustomItem.OpenPopup(const SelectFirstItem, TrackRightButton: Boolean;
+   const PopupPoint: TPoint; const Alignment: TTBPopupAlignment);
+ var
++  ModalHandler: TTBModalHandler;
+   DoneActionData: TTBDoneActionData;
+   Popup: TTBPopupWindow;
+ begin
+   FillChar(DoneActionData, SizeOf(DoneActionData), 0);
+-  Popup := CreatePopup(nil, nil, False, SelectFirstItem, False, PopupPoint,
+-    Alignment);
++  ModalHandler := TTBModalHandler.Create(0);
+   try
+-    Include(Popup.View.FState, vsIgnoreFirstMouseUp);
+-    PopupMessageLoop(Popup.View, False, False, SelectFirstItem, TrackRightButton,
+-      DoneActionData);
++    Popup := CreatePopup(nil, nil, False, SelectFirstItem, False, PopupPoint,
++      Alignment);
++    try
++      Include(Popup.View.FState, vsIgnoreFirstMouseUp);
++      ModalHandler.Loop(Popup.View, False, False, SelectFirstItem,
++        TrackRightButton, DoneActionData);
++    finally
++      { Remove vsModal state from the root view before any TTBView.Destroy
++        methods get called, so that NotifyFocusEvent becomes a no-op }
++      Exclude(Popup.View.FState, vsModal);
++      Popup.Free;
++    end;
+   finally
+-    Popup.Free;
++    ModalHandler.Free;
+   end;
+   ProcessDoneAction(DoneActionData);
+ end;
+@@ -1887,7 +2005,7 @@
+       EventItem := ItemContainingItems(Item);
+       if not(csDesigning in ComponentState) then begin
+         for I := 0 to EventItem.Count-1 do
+-          EventItem.Items[I].InitiateAction; 
++          EventItem.Items[I].InitiateAction;
+       end;
+       if not(tbisEmbeddedGroup in Item.ItemStyle) then begin
+         if EventItem <> Item then begin
+@@ -2276,10 +2394,21 @@
+ 
+ procedure TTBSeparatorItemViewer.CalcSize(const Canvas: TCanvas;
+   var AWidth, AHeight: Integer);
++Var //Skin Patch
++  Skinned: Boolean; //Skin Patch
+ begin
+   if not IsToolbarStyle then
+-    Inc(AHeight, DivRoundUp(GetTextHeight(Canvas.Handle) * 2, 3))
+-  else begin
++  begin
++//Skin Patch Begin
++   Skinned := (Assigned(FView.FSkin) and not (FView.FSkin.SkinType = tbsDisabled)) or
++              not (DefaultSkin.SkinType = tbsDisabled);
++
++    if Skinned then
++      AHeight := 3
++    else
++//Skin Patch End
++      Inc(AHeight, DivRoundUp(GetTextHeight(Canvas.Handle) * 2, 3))
++  end else begin
+     AWidth := 6;
+     AHeight := 6;
+   end;
+@@ -2288,11 +2417,23 @@
+ procedure TTBSeparatorItemViewer.Paint(const Canvas: TCanvas;
+   const ClientAreaRect: TRect; IsSelected, IsPushed, UseDisabledShadow: Boolean);
+ var
+-  DC: HDC;
+   R: TRect;
+   ToolbarStyle, Horiz, LineSep: Boolean;
+-begin
+-  DC := Canvas.Handle;
++//Skin Patch Begin
++  CSkin: TTBBaseSkin;
++  Skinned: Boolean;
++  LeftMargin, I: Integer;
++//Skin Patch End
++begin
++//Skin Patch Begin
++  If Assigned(FView.FSkin) and not (FView.FSkin.SkinType = tbsDisabled) then
++   CSkin := FView.FSkin
++  else
++    if not (DefaultSkin.SkinType = tbsDisabled) then
++     CSkin := DefaultSkin else CSkin := nil;
++
++  Skinned := Assigned(CSkin);
++//Skin Patch End
+   if TTBSeparatorItem(Item).FBlank then
+     Exit;
+ 
+@@ -2312,13 +2453,75 @@
+       else
+         InflateRect(R, -tbDockedLineSepOffset, 0);
+     end;
+-    DrawEdge(DC, R, EDGE_ETCHED, BF_TOP);
++//Skin Patch Begin
++    LeftMargin := 0;
++    if Skinned then begin
++      case CSkin.SkinType of
++        tbsNativeXP: begin
++                      R := ClientAreaRect;
++
++                      aTheme := OpenThemeData(0, ToolbarThemeName);
++                      aPart := Integer(TP_SEPARATORVERT);
++                      aState := 0;
++
++                      DrawThemeBackground(aTheme, Canvas.Handle, aPart, aState, R, nil);
++                      CloseThemeData(aTheme);
++                     end;
++       tbsWindowsXP: begin
++                      Canvas.Brush.Color := CSkin.Colors.tcSeparator;
++                      Canvas.FillRect(Rect(3, 1, ClientAreaRect.Right -3, 2));
++                     end;
++        tbsOfficeXP: begin
++                       If Not FView.IsToolbar Then
++                        Begin
++                         for i := 0 to FView.FViewerCount -1 do
++                          if FView.FViewers[i].FItem.Visible then begin
++                           LeftMargin := GetImgListMargin(FView.FViewers[i]) -2;
++                           break;
++                          end;
++
++                         if CSkin.ImgBackStyle = tbimsDefault then begin
++                           Canvas.Brush.Color := CSkin.Colors.tcImageList;
++                           Canvas.FillRect(Rect(0, 0, LeftMargin +2, 3));
++                         end;
++
++                         Canvas.Brush.Color := CSkin.Colors.tcSeparator;
++                         Canvas.FillRect(Rect(LeftMargin +4, 1, ClientAreaRect.Right, 2));
++                        End
++                       Else
++                        Begin
++                         Canvas.Brush.Color := CSkin.Colors.tcSeparator;
++                         Canvas.FillRect(Rect(0, 1, ClientAreaRect.Right, 2));
++                        End;
++                       end;
++      end;
++    end //Skin Patch End
++    else DrawEdge(Canvas.Handle, R, EDGE_ETCHED, BF_TOP);
+   end
+   else begin
+     R.Left := R.Right div 2 - 1;
+     if LineSep then
+       InflateRect(R, 0, -tbDockedLineSepOffset);
+-    DrawEdge(DC, R, EDGE_ETCHED, BF_LEFT);
++//Skin Patch Begin
++    if Skinned then
++      case CSkin.SkinType of
++        tbsNativeXP: begin
++                      R := ClientAreaRect;
++
++                      aTheme := OpenThemeData(0, ToolbarThemeName);
++                      aPart := Integer(TP_SEPARATOR);
++                      aState := 0;
++
++                      DrawThemeBackground(aTheme, Canvas.Handle, aPart, aState, R, nil);
++                      CloseThemeData(aTheme);
++                     end;
++                else begin
++                      Canvas.Brush.Color := CSkin.Colors.tcSeparator;
++                      Canvas.FillRect(Rect(2, 0, 3, R.Bottom));
++                     end;
++      end
++    else //Skin Patch End
++     DrawEdge(Canvas.Handle, R, EDGE_ETCHED, BF_LEFT);
+   end;
+ end;
+ 
+@@ -2380,6 +2583,27 @@
+   FView := AView;
+ end;
+ 
++destructor TTBItemViewer.Destroy;
++begin
++  if Assigned(FAccObjectInstance) then begin
++    FAccObjectInstance.ClientIsDestroying;
++    FAccObjectInstance := nil;
++  end;
++  inherited;
++end;
++
++function TTBItemViewer.GetAccObject: IDispatch;
++begin
++  if FAccObjectInstance = nil then begin
++    if not InitializeOleAcc then begin
++      Result := nil;
++      Exit;
++    end;
++    FAccObjectInstance := TTBItemViewerAccObject.Create(Self);
++  end;
++  Result := FAccObjectInstance;
++end;
++
+ function TTBItemViewer.GetCaptionText: String;
+ var
+   P: Integer;
+@@ -2447,13 +2671,35 @@
+   ImgList: TCustomImageList;
+   S: String;
+   RotatedFont, SaveFont: HFONT;
++//Skin Patch Begin
++  CSkin: TTBBaseSkin;
++  Skinned: Boolean;
++//Skin Patch End;
+ begin
+   ToolbarStyle := IsToolbarStyle;
+   DC := Canvas.Handle;
+   ImgList := GetImageList;
++//Skin Patch Begin
++  If Assigned(FView.FSkin) and (FView.FSkin.SkinType = tbsOfficeXP) then
++    CSkin := FView.FSkin
++  else
++    if (DefaultSkin.SkinType = tbsOfficeXP) then
++     CSkin := DefaultSkin else CSkin := nil;
++
++  Skinned := Assigned(CSkin);
++//Skin Patch End;
+   if ToolbarStyle then begin
+     AWidth := 6;
+     AHeight := 6;
++
++//Skin Patch Begin
++//Determinate if it's menubar and dec it's height by 2
++    if Skinned and
++       Assigned(FView.FWindow) and
++       (FView.FWindow is TTBCustomToolbar) and
++       TTBCustomToolbar(FView.FWindow).MenuBar then
++     Dec(AHeight, 2);
++//Skin Patch End
+   end
+   else begin
+     AWidth := 0;
+@@ -2466,6 +2712,10 @@
+       Inc(AWidth, GetTextWidth(DC, GetCaptionText, True));
+       if ToolbarStyle then
+         Inc(AWidth, 6);
++//Skin Patch Begin
++      if Skinned then
++        Inc(AHeight, 3);
++//Skin Patch End
+     end
+     else begin
+       { Vertical text isn't always the same size as horizontal text, so we have
+@@ -2506,6 +2756,10 @@
+   end;
+   if not ToolbarStyle then begin
+     Inc(AHeight, TextMetrics.tmExternalLeading + tbMenuVerticalMargin);
++//Skin Patch Begin
++    if Skinned then
++     Inc(AHeight, 2);
++//Skin Patch End
+     if Assigned(ImgList) then begin
+       H := ImgList.Height + 3;
+       if H > AHeight then
+@@ -2524,7 +2778,8 @@
+ end;
+ 
+ procedure TTBItemViewer.DrawItemCaption(const Canvas: TCanvas; ARect: TRect;
+-  const ACaption: String; ADrawDisabledShadow: Boolean; AFormat: UINT);
++  const ACaption: String; ADrawDisabledShadow: Boolean; AFormat: UINT;
++  const Disabled3D: Boolean);
+ var
+   DC: HDC;
+ 
+@@ -2538,20 +2793,44 @@
+ 
+ var
+   ShadowColor, HighlightColor, SaveTextColor: DWORD;
++//Skin Patch Begin
++  CSkin: TTBBaseSkin;
++  Skinned: Boolean;
++//Skin Patch End
+ begin
+   DC := Canvas.Handle;
++
++//Skin Patch Begin
++  If (Assigned(FView.FSkin) and not (FView.FSkin.SkinType = tbsDisabled)) then
++   CSkin := FView.FSkin
++  else if Assigned(DefaultSkin) and not (DefaultSkin.SkinType = tbsDisabled) then
++   CSkin := DefaultSkin else CSkin := Nil;
++
++  Skinned := Assigned(CSkin);
++//Skin Patch End
+   if not ADrawDisabledShadow then
+     Draw
+   else begin
+-    ShadowColor := GetSysColor(COLOR_BTNSHADOW);
+-    HighlightColor := GetSysColor(COLOR_BTNHIGHLIGHT);
+-    OffsetRect(ARect, 1, 1);
+-    SaveTextColor := SetTextColor(DC, HighlightColor);
+-    Draw;
+-    OffsetRect(ARect, -1, -1);
+-    SetTextColor(DC, ShadowColor);
+-    Draw;
+-    SetTextColor(DC, SaveTextColor);
++//Skin Patch Begin
++    If Skinned and not Disabled3D then begin //Disabled item painting
++      ShadowColor := GetSysColor(COLOR_BTNSHADOW);
++      HighlightColor := GetSysColor(COLOR_BTNHIGHLIGHT);
++      SaveTextColor := SetTextColor(DC, HighlightColor);
++      SetTextColor(DC, ShadowColor);
++      Draw;
++      SetTextColor(DC, SaveTextColor);
++    end else begin
++//Skin Patch End
++      ShadowColor := GetSysColor(COLOR_BTNSHADOW);
++      HighlightColor := GetSysColor(COLOR_BTNHIGHLIGHT);
++      OffsetRect(ARect, 1, 1);
++      SaveTextColor := SetTextColor(DC, HighlightColor);
++      Draw;
++      OffsetRect(ARect, -1, -1);
++      SetTextColor(DC, ShadowColor);
++      Draw;
++      SetTextColor(DC, SaveTextColor);
++    end; //Skin Patch
+   end;
+ end;
+ 
+@@ -2560,6 +2839,8 @@
+ var
+   ShowEnabled, HasArrow: Boolean;
+   MenuCheckWidth, MenuCheckHeight: Integer;
++  CSkin: TTBBaseSkin; //Skin Patch
++  Skinned: Boolean; //Skin Patch
+ 
+   function GetDrawTextFlags: UINT;
+   begin
+@@ -2671,6 +2952,9 @@
+   end;
+ 
+ const
++//Skin Patch Begin
++  BorderColors: array[0..1] of TColor = (clBtnHighlight, clBtnShadow);
++//Skin Patch End
+   EdgeStyles: array[Boolean] of UINT = (BDR_RAISEDINNER, BDR_SUNKENOUTER);
+   CheckMarkPoints: array[0..11] of TPoint = (
+     { Black }
+@@ -2690,7 +2974,29 @@
+   DrawTextFlags: UINT;
+   LeftMargin: Integer;
+   TextMetrics: TTextMetric;
+-begin
++
++//Skin Patch Begin
++  ImgBitmap: TBitmap;
++  SkinMargin,
++  HoverMargin: Integer;
++  IsPopupOpen,
++  IsChevronPopup: Boolean;
++  HotImgList: TCustomImageList;
++//Skin Patch End;
++begin
++//Skin Patch Begin
++  If Assigned(FView.FSkin) and not (FView.FSkin.SkinType = tbsDisabled) then
++    CSkin := FView.FSkin
++  else
++    if not (DefaultSkin.SkinType = tbsDisabled) then
++     CSkin := DefaultSkin else CSkin := nil;
++
++  Skinned := Assigned(CSkin);
++
++  IsChevronPopup := Assigned(FView.FChevronParentView) and
++                    (tbisSubmenu in FItem.FItemStyle);
++  IsPopupOpen := IsPushed and not (FView.FOpenViewer = Nil);
++//Skin Patch End
+   ToolbarStyle := IsToolbarStyle;
+   ShowEnabled := Item.Enabled or View.Customizing;
+   HasArrow := (tbisSubmenu in Item.ItemStyle) and
+@@ -2706,7 +3012,7 @@
+     else
+       LeftMargin := ClientAreaRect.Bottom;
+   end;
+-
++  Inc(LeftMargin, 2); //Skin Patch
+   { Border }
+   RC := ClientAreaRect;
+   if ToolbarStyle then begin
+@@ -2728,34 +3034,302 @@
+     end
+     else
+       SetRectEmpty(RD);
+-    if (IsSelected and ShowEnabled) or Item.Checked or
+-       (csDesigning in Item.ComponentState) then begin
++    if (IsSelected and (ShowEnabled or
++//Skin Patch Begin
++        (Skinned and not (CSkin.SkinType = tbsOfficeXP)) or
++        (Skinned and (CSkin.SkinType = tbsOfficeXP) and not FView.FMouseOverSelected))) or
++//Skin Patch End
++        Item.Checked or (csDesigning in Item.ComponentState) then begin
+       if not(tbisCombo in Item.ItemStyle) then
+-        DrawEdge(Canvas.Handle, RC, EdgeStyles[IsPushed or Item.Checked], BF_RECT)
++//Skin Patch Begin
++       if Skinned then
++         case CSkin.SkinType of
++            tbsNativeXP: begin
++                          if (FView.FWindow is TTBCustomToolbar) and
++                             TTBCustomToolbar(FView.FWindow).MenuBar then begin
++                             Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++                             Canvas.FillRect(RC);
++                          end
++                          else begin
++                            aTheme := OpenThemeData(0, ToolbarThemeName);
++                            aPart := Integer(ToolbarPart(TP_BUTTON));
++
++                            If Not Item.Enabled Then
++                             aState := Integer(ToolbarState(TS_DISABLED))
++                            Else
++                             If Item.Checked Then
++                              Begin
++                               If IsSelected Then
++                                aState := Integer(ToolbarState(TS_HOTCHECKED))
++                               Else
++                                aState := Integer(ToolbarState(TS_CHECKED));
++                              End
++                             Else
++                              If IsPushed Then
++                               aState := Integer(ToolbarState(TS_PRESSED))
++                              Else
++                               If IsSelected Then
++                                aState := Integer(ToolbarState(TS_HOT))
++                               Else
++                                aState := Integer(ToolbarState(TS_NORMAL));
++
++                            DrawThemeBackground(aTheme, Canvas.Handle, aPart, aState, RC, nil);
++                            CloseThemeData(aTheme);
++                          end;
++                         end;
++           tbsWindowsXP: begin
++                           if (FView.FWindow is TTBCustomToolbar) and
++                              TTBCustomToolbar(FView.FWindow).MenuBar then begin
++                             Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++                             Canvas.FillRect(RC);
++                           end
++                           else if Item.Enabled then begin
++                             if Item.Checked and not IsPushed then
++                              Canvas.Brush.Color := CSkin.Colors.tcChecked
++                             else
++                              Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                             Canvas.Pen.Color := CSkin.Colors.tcSelBarBorder;
++                             Canvas.RoundRect(RC.Left, RC.Top, RC.Right, RC.Bottom, 6, 6);
++                           end;
++                         end;
++            tbsOfficeXP: begin
++                           if IsPopupOpen and
++                               (tbisSubmenu in Item.ItemStyle) then
++                             if (not Item.Enabled and not FView.FMouseOverSelected) then
++                               Canvas.Brush.Color := CSkin.Colors.tcSelBar
++                             else
++                               Canvas.Brush.Color := CSkin.Colors.tcImageList
++                           else if (IsPushed or Item.Checked) then
++                             if not IsPushed then
++                               Canvas.Brush.Color := CSkin.Colors.tcCheckedOver
++                             else
++                               Canvas.Brush.Color := CSkin.Colors.tcSelPushed
++                           else
++                             Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                           Canvas.FillRect(RC);
++
++                           if (tbisSubMenu in Item.ItemStyle) then
++                            If IsPopupOpen then
++                             if (not Item.Enabled and not FView.FMouseOverSelected) then
++                               Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder
++                             else
++                               Canvas.Brush.Color := CSkin.Colors.tcBorder
++                            else
++                             If IsChevronPopup then
++                              Canvas.Brush.Color := CSkin.Colors.tcBorder
++                             else
++                              Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder
++                           else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder;
++
++                           Canvas.FrameRect(RC);
++                         end;
++         end
++//Skin Patch End
++         else DrawEdge(Canvas.Handle, RC, EdgeStyles[IsPushed or Item.Checked], BF_RECT)
+       else begin
++//Skin Patch Begin
++       if Skinned then begin
++         case CSkin.SkinType Of
++           tbsOfficeXP: begin
++                         if IsPopupOpen and (tbisCombo in Item.ItemStyle) then
++                           if (not Item.Enabled and not FView.FMouseOverSelected) then
++                             Canvas.Brush.Color := CSkin.Colors.tcSelBar
++                           else
++                             Canvas.Brush.Color := CSkin.Colors.tcImageList
++                         else if (IsPushed or Item.Checked) then
++                            Canvas.Brush.Color := CSkin.Colors.tcSelPushed
++                          else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                         Canvas.FillRect(RC);
++
++                         If IsPopupOpen then
++                           if (not Item.Enabled and not FView.FMouseOverSelected) then
++                             Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder
++                           else begin
++                             Canvas.Brush.Color := CSkin.Colors.tcBorder;
++                             Inc(RC.Right); //Not show the right border when it's open
++                           end
++                         else
++                          If IsChevronPopup then
++                           Canvas.Brush.Color := CSkin.Colors.tcBorder
++                          else
++                           Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder;
++
++                         Canvas.FrameRect(RC);
++                        end;
++          tbsWindowsXP: begin
++                         if (FView.FWindow is TTBCustomToolbar) and
++                            TTBCustomToolbar(FView.FWindow).MenuBar then begin
++                           if (IsPushed or Item.Checked) then
++                            Canvas.Brush.Color := CSkin.Colors.tcSelPushed
++                           else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++
++                           Canvas.FillRect(RC);
++                         end
++                         else begin
++                           if Item.Checked and not IsPushed then
++                            Canvas.Brush.Color := CSkin.Colors.tcChecked
++                           else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                           Canvas.Pen.Color := CSkin.Colors.tcSelBarBorder;
++                           Canvas.RoundRect(RC.Left, RC.Top, RC.Right, RC.Bottom, 6, 6);
++                         end;
++                        end;
++           tbsNativeXP: begin
++                         aTheme := OpenThemeData(0, ToolbarThemeName);
++                         aPart := Integer(ToolbarPart(TP_SPLITBUTTON));
++
++                         If Not Item.Enabled Then
++                          aState := Integer(ToolbarState(TS_DISABLED))
++                         Else
++                          If Item.Checked Then
++                           Begin
++                            If IsSelected Then
++                             aState := Integer(ToolbarState(TS_HOTCHECKED))
++                            Else
++                             aState := Integer(ToolbarState(TS_CHECKED));
++                           End
++                          Else
++                           If IsPushed and View.FCapture Then
++                            aState := Integer(ToolbarState(TS_PRESSED))
++                           Else
++                            If IsSelected Then
++                             aState := Integer(ToolbarState(TS_HOT))
++                            Else
++                             aState := Integer(ToolbarState(TS_NORMAL));
++
++                          DrawThemeBackground(aTheme, Canvas.Handle, aPart, aState, RC, nil);
++                          CloseThemeData(aTheme);
++                        end;
++         end;
++       end
++//Skin Patch End
++       else
+         DrawEdge(Canvas.Handle, RC, EdgeStyles[(IsPushed and View.FCapture) or Item.Checked], BF_RECT);
+-        if (IsSelected and ShowEnabled) or
++
++        if (IsSelected and (ShowEnabled or not FView.FMouseOverSelected)) or //Skin Patch
+            (csDesigning in Item.ComponentState) then
++//Skin Patch Begin
++         if Skinned then begin
++           case CSkin.SkinType Of
++             tbsOfficeXP: begin
++                           if IsPopupOpen and (tbisCombo in Item.ItemStyle) then
++                              if (not Item.Enabled and not FView.FMouseOverSelected) then
++                                Canvas.Brush.Color := CSkin.Colors.tcSelBar
++                              else
++                                Canvas.Brush.Color := CSkin.Colors.tcImageList
++                            else
++                               Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                            Canvas.FillRect(RD);
++
++                            Dec(RD.Left);
++                            Inc(RD.Right);
++
++                            If IsPopupOpen then
++                              if (not Item.Enabled and not FView.FMouseOverSelected) then
++                                Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder
++                              else
++                                Canvas.Brush.Color := CSkin.Colors.tcBorder
++                            else
++                             If IsChevronPopup then
++                              Canvas.Brush.Color := CSkin.Colors.tcBorder
++                             else
++                              Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder;
++
++                            Canvas.FrameRect(RD);
++
++                            //We "erase" the left line of the Frame when the popup opens
++                            If IsPopupOpen then begin
++                               Canvas.Pen.Color := CSkin.Colors.tcImageList;
++                               Canvas.Polyline([Point(RD.Left, RD.Top +1), Point(RD.Left, RD.Bottom -1)]);
++                            end;
++                          end;
++            tbsWindowsXP: if (FView.FWindow is TTBCustomToolbar) and
++                             TTBCustomToolbar(FView.FWindow).MenuBar then begin
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++                            Canvas.FillRect(RD);
++                          end
++                          else begin
++                            if Item.Checked and not IsPushed then
++                             Canvas.Brush.Color := CSkin.Colors.tcChecked
++                            else
++                             Canvas.Brush.Color := CSkin.Colors.tcSelBar;
++
++                            Canvas.Pen.Color := CSkin.Colors.tcSelBarBorder;
++                            Canvas.RoundRect(RD.Left -2, RD.Top, RD.Right +2, RD.Bottom, 6, 6);
++                          end;
++           end;
++         end
++//Skin Patch End
++         else
+           DrawEdge(Canvas.Handle, RD, EdgeStyles[IsPushed and not View.FCapture], BF_RECT);
+       end;
+     end;
+     if HasArrow then begin
++     if not Skinned then //Skin Patch
+       if not(tbisCombo in Item.ItemStyle) and IsPushed then
+         OffsetRect(RD, 1, 1);
++//Skin Patch Begin
++      if Skinned and (CSkin.SkinType = tbsNativeXP) and
++        (tbisCombo in Item.ItemStyle) then begin
++        Inc(RD.Right, 2);
++
++        aTheme := OpenThemeData(0, ToolbarThemeName);
++        aPart := Integer(ToolbarPart(TP_SPLITBUTTONDROPDOWN));
++
++        If Not Item.Enabled Then
++         aState := Integer(ToolbarState(TS_DISABLED))
++        Else
++         If Item.Checked Then
++          Begin
++           If IsSelected Then
++            aState := Integer(ToolbarState(TS_HOTCHECKED))
++           Else
++            aState := Integer(ToolbarState(TS_CHECKED));
++          End
++         Else
++          If IsPushed Then
++           aState := Integer(ToolbarState(TS_PRESSED))
++          Else
++           If IsSelected Then
++            aState := Integer(ToolbarState(TS_HOT))
++           Else
++            aState := Integer(ToolbarState(TS_NORMAL));
++
++        DrawThemeBackground(aTheme, Canvas.Handle, aPart, aState, RD, nil);
++        CloseThemeData(aTheme);
++
++        Dec(RD.Right, 2);
++        end
++      else
++//Skin Patch End;
+       DrawDropdownArrow(RD, not(tbisCombo in Item.ItemStyle) and
+         (View.Orientation = tbvoVertical));
+     end;
+     InflateRect(RC, -1, -1);
+     if Item.Checked and not (IsSelected and ShowEnabled) then begin
+-      Canvas.Brush.Bitmap := GetDitherBitmap;
+-      Canvas.FillRect(RC);
++      If Skinned then //Skin Patch
++        Canvas.Brush.Color := CSkin.Colors.tcChecked //Skin Patch
++      else Canvas.Brush.Bitmap := GetDitherBitmap;
++        If (not skinned) or (Skinned and not (CSkin.SkinType in [tbsWindowsXP, tbsNativeXP])) then //Skin Patch
++          Canvas.FillRect(RC);
+       Canvas.Brush.Style := bsClear;
+     end;
+     InflateRect(RC, -1, -1);
+-    if Item.Checked or
+-       ((IsSelected and IsPushed) and
+-        (not(tbisCombo in Item.ItemStyle) or View.FCapture)) then
+-      OffsetRect(RC, 1, 1);
++
++    if not Skinned then //Skin Patch
++     if Item.Checked or
++        ((IsSelected and IsPushed) and
++         (not(tbisCombo in Item.ItemStyle) or View.FCapture)) then
++       OffsetRect(RC, 1, 1);
++
+     if HasArrow and not(tbisCombo in Item.ItemStyle) then begin
+       if View.Orientation <> tbvoVertical then
+         Dec(RC.Right, tbDropdownArrowWidth)
+@@ -2769,11 +3343,82 @@
+       value. }
+     if IsSelected then begin
+       R := RC;
+-      if ImageIsShown or Item.Checked then
+-        Inc(R.Left, LeftMargin + tbMenuImageTextSpace);
++
++      if not Skinned then //Skin Patch
++       if ImageIsShown or Item.Checked then
++         Inc(R.Left, LeftMargin + tbMenuImageTextSpace);
++
+       if (tbisCombo in Item.ItemStyle) and IsSelected and ShowEnabled then
+         Dec(R.Right, MenuCheckWidth);
+-      Canvas.FillRect(R);
++//Skin Patch Begin
++       if Skinned then
++         case CSkin.SkinType of
++           tbsOfficeXP: If ShowEnabled then begin
++                          Inc(R.Left);
++                          //Dec(R.Right);
++
++                          if (tboGradSelItem in CSkin.Options) then
++                            FillGradient(Canvas.Handle, R,
++                                         CSkin.Colors.tcGradStart,
++                                         CSkin.Colors.tcGradEnd,
++                                         CSkin.Gradient)
++                          else begin
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++                            Canvas.FillRect(R);
++                          end;
++
++                          Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++                          Canvas.FrameRect(R);
++                                  //stop
++                          if (tbisCombo in Item.ItemStyle) and IsSelected then
++                          begin
++                            Canvas.Brush.Color := CSkin.Colors.tcSelPushedBorder;
++                            Canvas.FrameRect(Rect(R.Right -1, 0, R.Right + MenuCheckWidth, R.Bottom));
++                          end;
++                        end
++                        else if KeyHover or (not FView.FMouseOverSelected) then begin
++                          Canvas.Brush.Color := CSkin.Colors.tcPopup;
++                          Canvas.FillRect(R);
++
++                          Canvas.Brush.Color := CSkin.Colors.tcSelBarBorder;
++                          Canvas.FrameRect(R);
++
++                          KeyHover := False;
++
++                          Dec(R.Left);
++                          Inc(R.Right);
++                        end;
++          tbsNativeXP,
++          tbsWindowsXP: begin
++                          Inc(RC.Left, 2); //Adjust Windows XP Selection Bar
++                          Dec(RC.Right, 2); //Adjust Windows XP Selection Bar
++                          Inc(R.Left, 2); //Adjust Windows XP Selection Bar
++                          Dec(R.Right, 2); //Adjust Windows XP Selection Bar
++
++                          if (tboGradSelItem in CSkin.Options) then
++                            FillGradient(Canvas.Handle, RC,
++                                         CSkin.Colors.tcGradStart,
++                                         CSkin.Colors.tcGradEnd,
++                                         CSkin.Gradient)
++                          else begin
++                            if (tbisCombo in Item.ItemStyle) then
++                             Inc(R.Right, MenuCheckWidth -1);
++
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++                            Canvas.FillRect(R);
++                          end;
++
++                          Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++                          Canvas.FrameRect(RC);
++
++                          Dec(RC.Left, 2); //Adjust Windows XP Selection Bar
++                          Inc(RC.Right, 2); //Adjust Windows XP Selection Bar
++                          Dec(R.Left, 2); //Adjust Windows XP Selection Bar
++                          Inc(R.Right, 2); //Adjust Windows XP Selection Bar
++                        end;
++         end
++//Skin Patch End
++       else Canvas.FillRect(R);
+     end;
+   end;
+ 
+@@ -2783,6 +3428,19 @@
+     with Canvas.Font do Style := Style + [fsBold];
+   GetTextMetrics(Canvas.Handle, TextMetrics);
+ 
++//Skin Patch Begin
++  if Skinned then begin
++
++    if ((FView.FWindow is TTBCustomToolbar) and
++        TTBCustomToolbar(FView.FWindow).MenuBar) or
++        (FView.FWindow is TTBPopupWindow) then
++      if ShowEnabled and not (IsPopupOpen or IsSelected) then
++        Canvas.Font.Color := CSkin.Colors.tcText
++      else
++        Canvas.Font.Color := CSkin.Colors.tcHighlightText;
++  end;
++//Skin Patch End
++
+   { Caption }
+   if CaptionShown then begin
+     S := GetCaptionText;
+@@ -2790,13 +3448,25 @@
+     DrawTextFlags := GetDrawTextFlags;
+     if ToolbarStyle then begin
+       if ImageIsShown then begin
+-        if not IsRotated and not(tboImageAboveCaption in Item.EffectiveOptions) then
++        if (View.Orientation <> tbvoVertical) and
++           not(tboImageAboveCaption in Item.EffectiveOptions) then
+           Inc(R.Left, ImgList.Width + 1)
+         else
+           Inc(R.Top, ImgList.Height + 1);
+       end;
+       DrawItemCaption(Canvas, R, S, UseDisabledShadow,
+-        DT_SINGLELINE or DT_CENTER or DT_VCENTER or DrawTextFlags)
++        DT_SINGLELINE or DT_CENTER or DT_VCENTER or DrawTextFlags,
++// Skin Patch Begin
++        (not Skinned) or (Skinned and (CSkin.SkinType = tbsWindowsXP) and
++        not ((FView.FWindow is TTBCustomToolbar) and
++              TTBCustomToolbar(FView.FWindow).MenuBar)));
++// Skin Patch End
++
++//Skin Patch Begin
++      if Skinned then
++       Inc(R.Left, XPMargin *2);
++//Skin Patch End
++
+     end
+     else begin
+       Inc(R.Left, LeftMargin + tbMenuImageTextSpace + tbMenuLeftTextMargin);
+@@ -2806,8 +3476,21 @@
+       if (R.Bottom - R.Top) - (TextMetrics.tmHeight + TextMetrics.tmExternalLeading) = tbMenuVerticalMargin then
+         Dec(R.Bottom);
+       Inc(R.Top, TextMetrics.tmExternalLeading);
+-      DrawItemCaption(Canvas, R, S, UseDisabledShadow,
+-        DT_SINGLELINE or DT_LEFT or DT_VCENTER or DrawTextFlags);
++
++//Skin Patch Begin
++      If Skinned then begin
++       Inc(R.Left, 2);
++
++       DrawItemCaption(Canvas, R, S, Not ShowEnabled,
++          DT_SINGLELINE or DT_LEFT or DT_VCENTER or DrawTextFlags,
++          False); //Skin Patch
++
++       Dec(R.Left, 2);
++      end
++      else
++//Skin Patch End
++         DrawItemCaption(Canvas, R, S, UseDisabledShadow,
++           DT_SINGLELINE or DT_LEFT or DT_VCENTER or DrawTextFlags);
+     end;
+   end;
+ 
+@@ -2821,25 +3504,33 @@
+         is 4 pixels less than the total item height. This is done so underlined
+         characters aren't displayed too low. }
+       if (R.Bottom - R.Top) - (TextMetrics.tmHeight + TextMetrics.tmExternalLeading) = tbMenuVerticalMargin then
+-        Dec(R.Bottom);
++        Dec (R.Bottom);
+       Inc(R.Top, TextMetrics.tmExternalLeading);
+-      DrawItemCaption(Canvas, R, S, UseDisabledShadow,
+-        DT_SINGLELINE or DT_LEFT or DT_VCENTER or DT_NOPREFIX);
++
++//Skin Patch Begin
++      If Skinned then
++         DrawItemCaption(Canvas, R, S, not ShowEnabled,
++           DT_SINGLELINE or DT_LEFT or DT_VCENTER or DT_NOPREFIX)
++      else
++//Skin Patch end
++        DrawItemCaption(Canvas, R, S, UseDisabledShadow,
++          DT_SINGLELINE or DT_LEFT or DT_VCENTER or DT_NOPREFIX);
+     end;
+     if tbisSubmenu in Item.ItemStyle then begin
+-      if tbisCombo in Item.ItemStyle then begin
+-        R := RC;
+-        R.Left := R.Right - MenuCheckWidth;
+-        if IsSelected and ShowEnabled then
++      if not Skinned then //Skin Patch
++       if tbisCombo in Item.ItemStyle then begin
++         R := RC;
++         R.Left := R.Right - MenuCheckWidth;
++         if IsSelected and ShowEnabled then
+           DrawEdge(Canvas.Handle, R, BDR_SUNKENOUTER, BF_RECT or BF_MIDDLE)
+-        else begin
+-          Dec(R.Left);
+-          if not IsSelected then
+-            DrawEdge(Canvas.Handle, R, EDGE_ETCHED, BF_LEFT)
+-          else
+-            DrawEdge(Canvas.Handle, R, BDR_SUNKENOUTER, BF_LEFT);
+-        end;
+-      end;
++         else begin
++           Dec(R.Left);
++           if not IsSelected then
++             DrawEdge(Canvas.Handle, R, EDGE_ETCHED, BF_LEFT)
++            else
++             DrawEdge(Canvas.Handle, R, BDR_SUNKENOUTER, BF_LEFT);
++         end;
++       end;
+       DrawSubmenuArrow;
+     end;
+   end;
+@@ -2848,33 +3539,192 @@
+   if ImageIsShown or (not ToolbarStyle and Item.Checked) then begin
+     R := RC;
+     if ToolbarStyle then begin
+-      if not IsRotated and not(tboImageAboveCaption in Item.EffectiveOptions) then
++      if (View.Orientation <> tbvoVertical) and
++         not(tboImageAboveCaption in Item.EffectiveOptions) then
+         R.Right := R.Left + ImgList.Width + 2
+       else
+         R.Bottom := R.Top + ImgList.Height + 2;
+     end
+     else begin
+-      R.Right := R.Left + LeftMargin;
+-      if (IsSelected and ShowEnabled) or Item.Checked then
++       R.Right := R.Left + LeftMargin;
++//Skin Patch Begin
++      if Skinned then begin
++       if Item.Checked then begin
++         InflateRect(R, -1 - Integer(Skinned and (CSkin.SkinType = tbsOfficeXP)), -1);
++
++         case CSkin.SkinType of
++          tbsNativeXP,
++           tbsWindowsXP: begin
++                          if tboGradSelItem in CSkin.Options then
++                           FillGradient(Canvas.Handle, R,
++                                        ColorDarker(CSkin.Colors.tcGradStart, Integer(IsSelected) * 20),
++                                        ColorDarker(CSkin.Colors.tcGradEnd, Integer(IsSelected) * 20),
++                                        CSkin.Gradient)
++                          else begin
++                            if IsSelected then
++                              Canvas.Brush.Color := CSkin.Colors.tcSelPushed
++                            else
++                              Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++
++                            if Item.ImageIndex <> -1 then
++                             Canvas.FillRect(R);
++                          end;
++
++                          if IsSelected then
++                            Canvas.Brush.Color := CSkin.Colors.tcSelPushedBorder
++                          else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++
++                          if Item.ImageIndex <> -1 then
++                            Canvas.FrameRect(R);
++                         end;
++            tbsOfficeXP: begin
++                          if tboGradSelItem in CSkin.Options then
++                           FillGradient(Canvas.Handle, R,
++                                        ColorDarker(CSkin.Colors.tcGradStart, Integer(IsSelected) * 20),
++                                        ColorDarker(CSkin.Colors.tcGradEnd, Integer(IsSelected) * 20),
++                                        CSkin.Gradient)
++                          else begin
++                            if IsSelected then
++                              Canvas.Brush.Color := CSkin.Colors.tcSelPushed
++                            else
++                              Canvas.Brush.Color := CSkin.Colors.tcSelItem;
++
++                            Canvas.FillRect(R);
++                          end;
++
++                          if IsSelected then
++                            Canvas.Brush.Color := CSkin.Colors.tcSelPushedBorder
++                          else
++                            Canvas.Brush.Color := CSkin.Colors.tcSelItemBorder;
++
++                          Canvas.FrameRect(R);
++                         end;
++         end;
++       end
++      end
++      else //SkinPatch End
++       if (IsSelected and ShowEnabled) or Item.Checked then
+         DrawEdge(Canvas.Handle, R, EdgeStyles[Item.Checked], BF_RECT or BF_MIDDLE);
+-      if Item.Checked and not IsSelected then begin
+-        InflateRect(R, -1, -1);
+-        Canvas.Brush.Bitmap := GetDitherBitmap;
+-        Canvas.FillRect(R);
+-        Canvas.Brush.Style := bsClear;
+-        InflateRect(R, 1, 1);
++
++      if not skinned then begin
++        if Item.Checked and not IsSelected then begin
++          InflateRect(R, -1, -1);
++          Canvas.Brush.Bitmap := GetDitherBitmap;
++          Canvas.FillRect(R);
++          Canvas.Brush.Style := bsClear;
++          InflateRect(R, 1, 1);
++        end;
++
++        if Item.Checked then
++          OffsetRect(R, 1, 1);
+       end;
+-      if Item.Checked then
+-        OffsetRect(R, 1, 1);
+     end;
++
+     if ImageIsShown then begin
+       X := R.Left + ((R.Right - R.Left) - ImgList.Width) div 2;
+       Y := R.Top + ((R.Bottom - R.Top) - ImgList.Height) div 2;
+-      if ImgList is TTBCustomImageList then
+-        TTBCustomImageList(ImgList).DrawState(Canvas, X, Y, Item.ImageIndex,
+-          ShowEnabled, IsSelected, Item.Checked)
+-      else
+-        ImgList.Draw(Canvas, X, Y, Item.ImageIndex, ShowEnabled);
++//Skin Patch Begin
++      if Skinned then begin
++       if ShowEnabled then begin
++         SkinMargin := 0;
++         HoverMargin := 0;
++
++         if (ImgList is TTBCustomImageList) and
++             Assigned(TTBCustomImageList(ImgList).FHotImages) then
++           HotImgList := TTBCustomImageList(ImgList).FHotImages
++         else HotImgList := nil;
++
++         if CSkin.SkinType = tbsOfficeXP then
++           if (IsSelected)  and //If the mouse is over
++              (not IsPushed) and// and it isn't pushed or checked
++              (not Item.Checked) then begin //then create & draw the imagelist shadow
++             ImgBitmap := TBitmap.Create;
++             Canvas.Brush.Color := CSkin.Colors.tcImgListShadow;
++
++             if not (tboNoHoverIconShadow in CSkin.Options) then
++             begin
++               if Assigned(HotImgList) then begin
++                  ImgBitmap.Width := HotImgList.Width;
++                  ImgBitmap.Height := HotImgList.Height;
++                  HotImgList.ImageType := itMask;
++                  HotImgList.Draw(ImgBitmap.Canvas, 0, 0, Item.ImageIndex);
++               end
++               else begin
++                 ImgBitmap.Width := ImgList.Width;
++                 ImgBitmap.Height := ImgList.Height;
++                 ImgList.ImageType := itMask;
++                 ImgList.Draw(ImgBitmap.Canvas, 0, 0, Item.ImageIndex);
++               end;
++
++               DrawState(Canvas.Handle, Canvas.Brush.Handle, Nil,
++                         Integer(ImgBitmap.Handle), 0, X + 1, Y + 1,
++                         0, R.Bottom -4, DST_BITMAP or DSS_MONO);
++
++               ImgBitmap.Free;
++             end;
++
++             HoverMargin := -1;
++
++             //Put the draw state back to for drawing the image
++             if Assigned(HotImgList) then
++              HotImgList.ImageType := itImage
++             else ImgList.ImageType := itImage;
++           end
++           else
++            HoverMargin := -4;
++
++         case CSkin.SkinType of
++          tbsNativeXP,
++          tbsWindowsXP: if IsPushed and View.FCapture then SkinMargin := 1
++                        else SkinMargin := 0;
++           tbsOfficeXP: if IsPushed or Item.Checked then SkinMargin := 4
++                         else SkinMargin := 0;
++         end;
++
++         if (ImgList is TTBCustomImageList) then
++          if Item.Checked and Assigned(TTBCustomImageList(ImgList).FCheckedImages) then
++           ImgList := TTBCustomImageList(ImgList).FCheckedImages;
++
++         if IsSelected then // Is the mouse over ?
++           if Assigned(HotImgList) then // Is there any hot images?
++             HotImgList.Draw(Canvas, // Yes, draw from HotImages
++               X + SkinMargin + HoverMargin,
++               Y + SkinMargin + HoverMargin,
++               Item.ImageIndex, True)
++           else
++             ImgList.Draw(Canvas, // No, draw from Images
++               X + SkinMargin + HoverMargin,
++               Y + SkinMargin + HoverMargin,
++               Item.ImageIndex, True)
++         else if (tboBlendedImages in CSkin.Options) and not Item.Checked then begin
++           If FView.FIsToolbar Then
++            BlendTBXIcon(Canvas, Rect(X, Y, R.Right, R.Bottom), ImgList, Item.ImageIndex, 200)
++           Else
++            BlendTBXIcon(Canvas, Rect(X, Y, R.Right, R.Bottom), ImgList, Item.ImageIndex, 210);
++          end
++         else
++// draw from Images when mouse is not over
++           ImgList.Draw(Canvas, X, Y, Item.ImageIndex, True);
++       end
++       else // Draw disabled style
++         if (ImgList is TTBCustomImageList) and
++             Assigned(TTBCustomImageList(ImgList).FDisabledImages) then begin
++           TTBCustomImageList(ImgList).FDisabledImages.Draw (Canvas, X, Y, Item.ImageIndex, True);
++         end
++         else begin
++           DrawTBXIconShadow(Canvas, Rect(X, Y, R.Right, R.Bottom),
++                             ImgList, Item.ImageIndex);
++         end;
++      end
++//Skin Patch End
++      else begin //It's not skinned and execute the original TB2k imagelist routine
++        if ImgList is TTBCustomImageList then
++          TTBCustomImageList(ImgList).DrawState(Canvas, X, Y, Item.ImageIndex,
++            ShowEnabled, IsSelected, Item.Checked)
++        else
++          ImgList.Draw(Canvas, X, Y, Item.ImageIndex, ShowEnabled);
++      end
+     end
+     else
+       if not ToolbarStyle and Item.Checked then begin
+@@ -2888,8 +3738,13 @@
+         end;
+         Canvas.Pen.Color := clBtnText;
+         Polyline(Canvas.Handle, Points[0], 7);
+-        Canvas.Pen.Color := clBtnHighlight;
+-        Polyline(Canvas.Handle, Points[7], 5);
++//Skin Patch begin
++        if (not Skinned) or (Skinned and (CSkin.SkinType <> tbsOfficeXP)) then
++        begin
++//Skin Patch end
++          Canvas.Pen.Color := clBtnHighlight;
++          Polyline(Canvas.Handle, Points[7], 5);
++        end; //Skin Patch
+       end;
+   end;
+ end;
+@@ -3079,6 +3934,24 @@
+     FParentItem.RegisterNotification(LinkNotification);
+     FParentItem.FreeNotification(Self);
+   end;
++
++//Skin Patch Begin
++ if AOwner is TTBCustomDockableWindow then begin
++    if Assigned(TTBCustomDockableWindow(AOwner).Skin) then
++      FSkin := TTBCustomDockableWindow(AOwner).Skin;
++  end else if (AOwner is TTBPopupWindow) and
++              Assigned(AParentItem) and
++              Assigned(AParentItem.Owner) and
++              (AParentItem.Owner is TTBPopupMenu) then
++  begin
++   if Assigned(TTBPopupMenu(AParentItem.Owner).Skin) then
++    FSkin := TTBPopupMenu(AParentItem.Owner).Skin;
++    TTBPopupWindow(AOwner).Skin := FSkin;
++  end else if Assigned(AParentView) then
++    if Assigned(AParentView.Skin) then
++      FSkin := AParentView.Skin;
++//Skin Patch End
++
+   FUsePriorityList := AUsePriorityList;
+   FWindow := AWindow;
+   UpdateCurParentItem;
+@@ -3086,6 +3959,15 @@
+ 
+ destructor TTBView.Destroy;
+ begin
++  CloseChildPopups;
++  if Assigned(FAccObjectInstance) then begin
++    FAccObjectInstance.ClientIsDestroying;
++    { Get rid of our own reference to FAccObjectInstance. Normally the
++      reference count will be now be zero and FAccObjectInstance will be
++      freed, unless MSAA still holds a reference. }
++    FAccObjectInstance._Release;
++    FAccObjectInstance := nil;
++  end;
+   { If parent view is a toolbar, invalidate the open item so that it's
+     redrawn back in the "up" position }
+   if Assigned(ParentView) and ParentView.FIsToolbar then begin
+@@ -3093,7 +3975,6 @@
+     if Assigned(ParentView.FOpenViewer) then
+       ParentView.Invalidate(ParentView.FOpenViewer);
+   end;
+-  CloseChildPopups;
+   if Assigned(FCurParentItem) then
+     FCurParentItem.UnregisterNotification(ItemNotification);
+   if Assigned(FParentItem) then
+@@ -3101,6 +3982,34 @@
+   inherited;
+   FPriorityList.Free;
+   FreeViewers;
++  { Now that we're destroyed, "focus" the parent view }
++  if Assigned(FParentView) then
++    FParentView.NotifyFocusEvent;
++end;
++
++function TTBView.GetAccObject: IDispatch;
++begin
++  if FAccObjectInstance = nil then begin
++    if not InitializeOleAcc then begin
++      Result := nil;
++      Exit;
++    end;
++    FAccObjectInstance := TTBViewAccObject.Create(Self);
++    { Strictly as an optimization, take a reference for ourself and keep it
++      for the lifetime of the view. (Destroy calls _Release.) }
++    FAccObjectInstance._AddRef;
++  end;
++  Result := FAccObjectInstance;
++end;
++
++function TTBView.HandleWMGetObject(var Message: TMessage): Boolean;
++begin
++  if (Message.LParam = Integer(OBJID_CLIENT)) and InitializeOleAcc then begin
++    Message.Result := LresultFromObjectFunc(ITBAccessible, Message.WParam, GetAccObject);
++    Result := True;
++  end
++  else
++    Result := False;
+ end;
+ 
+ procedure TTBView.UpdateCurParentItem;
+@@ -3126,7 +4035,7 @@
+   I: Integer;
+ begin
+   { Use a 'while' instead of a 'for' since an InitiateAction implementation
+-    may add/delete items } 
++    may add/delete items }
+   I := 0;
+   while I < FViewerCount do begin
+     FViewers[I].Item.InitiateAction;
+@@ -3161,6 +4070,13 @@
+   Result := Assigned(AView);
+ end;
+ 
++function TTBView.GetRootView: TTBView;
++begin
++  Result := Self;
++  while Assigned(Result.FParentView) do
++    Result := Result.FParentView;
++end;
++
+ function TTBView.GetParentToolbarView: TTBView;
+ begin
+   Result := Self;
+@@ -3250,7 +4166,7 @@
+   if FSelected = Viewer then
+     FSelected := nil;
+   if FOpenViewer = Viewer then
+-    FOpenViewer := nil;
++    CloseChildPopups;
+ end;
+ 
+ procedure TTBView.RecreateItemViewer(const I: Integer);
+@@ -3282,8 +4198,14 @@
+       NewViewer := AItem.GetItemViewerClass(Self).Create(Self, AItem);
+       InsertIntoViewerArray(FViewers, FViewerCount, NewIndex,
+         NewViewer);
+-      if FUsePriorityList then
+-        AddToList(FPriorityList, NewViewer);
++      if FUsePriorityList then begin
++        if csLoading in AItem.ComponentState then
++          AddToList(FPriorityList, NewViewer)
++        else
++          { When new items are inserted programmatically at run-time, place
++            them at the top of FPriorityList }
++          AddToFrontOfList(FPriorityList, NewViewer);
++      end;
+     end;
+ 
+   var
+@@ -3560,6 +4482,38 @@
+   Result := nil;
+ end;
+ 
++procedure TTBView.NotifyFocusEvent;
++{ Notifies Active Accessibility of a change in "focus". Has no effect if the
++  view or the root view lacks the vsModal state. }
++var
++  I: Integer;
++begin
++  { Note: We don't notify about windows not yet shown (e.g. a popup menu that
++    is still initializing) because that would probably confuse screen readers.
++    Also allocating a window handle at this point *might* not be a good idea. }
++  if (vsModal in FState) and (vsModal in GetRootView.FState) and
++     FWindow.HandleAllocated and IsWindowVisible(FWindow.Handle) then begin
++    I := IndexOf(FSelected) + 1;
++    if (I = 0) and Assigned(FParentView) then begin
++      { If we have no selected item, report the the selected item on the parent
++        view as having the "focus".
++        Note: With standard menus, when you go from having a selection to no
++        selection on a submenu, it sends two focus events - first with the
++        client window as having the focus, then with the parent item. I
++        figure that's probably a bug, so I don't try to emulate that behavior
++        here. }
++      FParentView.NotifyFocusEvent;
++    end
++    else begin
++      CallNotifyWinEvent(EVENT_OBJECT_FOCUS, FWindow.Handle, OBJID_CLIENT, I);
++      { Note: I may be 0 (CHILDID_SELF) here, in which case NotifyWinEvent
++        will report the client window itself as being "focused". This is OK,
++        because it's what happens when a standard context menu has no
++        selection. }
++    end;
++  end;
++end;
++
+ procedure TTBView.SetSelected(Value: TTBItemViewer);
+ var
+   OldSelected: TTBItemViewer;
+@@ -3568,6 +4522,16 @@
+ begin
+   OldSelected := FSelected;
+   if Value <> OldSelected then begin
++    { If there's a new selection and the parent item on the parent view
++      isn't currently selected, select it. Also stop any timer running on
++      the parent view. }
++    if Assigned(Value) and Assigned(FParentView) and
++       Assigned(FParentView.FOpenViewer) and
++       (FParentView.FSelected <> FParentView.FOpenViewer) then begin
++      FParentView.Selected := FParentView.FOpenViewer;
++      FParentView.StopTimer(tiClose);
++      FParentView.StopTimer(tiOpen);
++    end;
+     CancelCapture;
+     if Assigned(OldSelected) then
+       OldSelected.Leaving;
+@@ -3594,6 +4558,7 @@
+         Invalidate(Value);
+       Value.Entering;
+     end;
++    NotifyFocusEvent;
+   end
+   else if FMouseOverSelected <> NewMouseOverSelected then begin
+     FMouseOverSelected := NewMouseOverSelected;
+@@ -3603,25 +4568,50 @@
+ end;
+ 
+ procedure TTBView.UpdateSelection(const P: PPoint; const AllowNewSelection: Boolean);
++{ Called in response to a mouse movement, this method updates the current
++  selection and updates the vsMouseInWindow view state. If the view is modal
++  (vsModal), it additionally closes/opens child popups, and enables/disables
++  the scroll arrow timers. }
++
++  function IsPtInScrollArrow(ADownArrow: Boolean): Boolean;
++  var
++    P2: TPoint;
++    R: TRect;
++  begin
++    Result := False;
++    if (vsModal in FState) and (vsMouseInWindow in FState) and
++       Assigned(P) then begin
++      P2 := FWindow.ScreenToClient(P^);
++      R := FWindow.ClientRect;
++      if PtInRect(R, P2) then begin
++        if ADownArrow then
++          Result := FShowDownArrow and (P2.Y >= R.Bottom - tbMenuScrollArrowHeight)
++        else
++          Result := FShowUpArrow and (P2.Y < tbMenuScrollArrowHeight);
++      end;
++    end;
++  end;
++
+ var
+   NewSelected, ViewerAtPoint: TTBItemViewer;
+   P2: TPoint;
+   MouseWasInWindow: Boolean;
++  OldSelected: TTBItemViewer;
++  MenuShowDelay: Integer;
+ begin
+   ValidatePositions;
+ 
+-  if not FIsPopup and not(vsOpen in FState) then
+-    NewSelected := nil
++  { If modal, default to keeping the existing selection }
++  if vsModal in FState then
++    NewSelected := FSelected
+   else
+-    { If the view is not a toolbar or it's a toolbar and it's open, require
+-      there to a selection }
+-    NewSelected := FSelected;
+-  MouseWasInWindow := vsMouseInWindow in FState;
++    NewSelected := nil;
+ 
++  { Is the mouse inside the window? }
++  MouseWasInWindow := vsMouseInWindow in FState;
+   if Assigned(P) and Assigned(FWindow) and (FindDragTarget(P^, True) = FWindow) then begin
+-    { If the mouse is inside the window and it's not an open toolbar, then
+-      default to no selection if no item is found at the cursor position. }
+-    if FIsPopup or not(vsOpen in FState) then
++    { If we're a popup window and the mouse is inside, default to no selection }
++    if FIsPopup then
+       NewSelected := nil;
+     Include(FState, vsMouseInWindow);
+     if AllowNewSelection or Assigned(FSelected) then begin
+@@ -3638,25 +4628,62 @@
+   if FCapture and (NewSelected <> FSelected) then
+     NewSelected := FSelected;
+ 
+-  { If selection is on a window that isn't a toolbar... }
++  { If we're a popup window and there is a selection... }
+   if FIsPopup and Assigned(NewSelected) then begin
+     { If the mouse just moved out of the window and no submenu was open,
+       remove the highlight }
+     if not FCapture and MouseWasInWindow and not(vsMouseInWindow in FState) and
+        (not Assigned(FOpenViewerView) or not(tbisSubmenu in NewSelected.Item.ItemStyle)) then
+       NewSelected := nil;
+-    { If the mouse moved into the window and the parent menu doesn't currently
+-      show this submenu as being highlighted then set it to be highlighted.
+-      Also stop any timer running on the parent menu. }
+-    if (vsMouseInWindow in FState) and Assigned(FParentView) then begin
+-      if FParentView.FSelected <> FParentView.FOpenViewer then
+-        FParentView.Selected := FParentView.FOpenViewer;
+-      FParentView.StopTimer(tiClose);
+-      FParentView.StopTimer(tiOpen);
+-    end;
+   end;
+ 
+-  Selected := NewSelected;
++  { Now we set the new Selected value.
++    Was a submenu item selected for the first time, or if a submenu was
++    already open, has the selection has moved to a different item? }
++  if (vsModal in FState) and (vsMouseInWindow in FState) and
++     (FOpenViewer <> NewSelected) and
++     (Assigned(FOpenViewer) or (tbisSubmenu in NewSelected.Item.ItemStyle)) then begin
++    if FIsToolbar then begin
++      { So that MSAA receives events in the right order, close child popups
++        *before* changing selection }
++      CloseChildPopups;
++      Selected := NewSelected;
++      if Assigned(FParentView) and not FCapture then
++        { On chevron popups, always drop down menus when mouse passes
++          over them, like Office 2000 }
++        Include(FState, vsDropDownMenus);
++      if vsDropDownMenus in FState then
++        OpenChildPopup(False);
++    end
++    else begin
++      { Use timers to delay the showing/hiding of submenus of submenus }
++      OldSelected := FSelected;
++      Selected := NewSelected;
++      MenuShowDelay := GetMenuShowDelay;
++      if not(tiOpen in FActiveTimers) then
++        StartTimer(tiClose, MenuShowDelay);
++      if not(tiOpen in FActiveTimers) or (FSelected <> OldSelected) then
++        StartTimer(tiOpen, MenuShowDelay);
++    end;
++  end
++  else
++    Selected := NewSelected;
++
++  { Update scroll arrow timers }
++  if IsPtInScrollArrow(False) then begin
++    StopTimer(tiScrollDown);
++    if not(tiScrollUp in FActiveTimers) then
++      StartTimer(tiScrollUp, 100);
++  end
++  else if IsPtInScrollArrow(True) then begin
++    StopTimer(tiScrollUp);
++    if not(tiScrollDown in FActiveTimers) then
++      StartTimer(tiScrollDown, 100);
++  end
++  else begin
++    StopTimer(tiScrollUp);
++    StopTimer(tiScrollDown);
++  end;
+ end;
+ 
+ procedure TTBView.RecreateAllViewers;
+@@ -4686,12 +5713,15 @@
+       Include(FState, vsShowAccels)
+     else
+       Exclude(FState, vsShowAccels);
+-    for I := 0 to FViewerCount-1 do begin
+-      Viewer := FViewers[I];
+-      if Viewer.CaptionShown and
+-         (FindAccelChar(Viewer.GetCaptionText) <> #0) then
+-        Invalidate(Viewer);  {}{optimize?}
+-    end;
++    if Assigned(FWindow) and FWindow.HandleAllocated and
++       IsWindowVisible(FWindow.Handle) then
++      { ^ the visibility check is just an optimization }
++      for I := 0 to FViewerCount-1 do begin
++        Viewer := FViewers[I];
++        if Viewer.CaptionShown and
++           (FindAccelChar(Viewer.GetCaptionText) <> #0) then
++          Invalidate(Viewer);
++      end;
+   end;
+ end;
+ 
+@@ -4820,21 +5850,36 @@
+ 
+ procedure TTBView.EnterToolbarLoop(Options: TTBEnterToolbarLoopOptions);
+ var
++  ModalHandler: TTBModalHandler;
+   DoneActionData: TTBDoneActionData;
+   P: TPoint;
+ begin
+-  if FIsPopup or (vsOpen in FState) then Exit;
++  if vsModal in FState then Exit;
+   FillChar(DoneActionData, SizeOf(DoneActionData), 0);
+-  { remove all states except... }
+-  FState := FState * [vsShowAccels];
++  ModalHandler := TTBModalHandler.Create(FWindow.Handle);
+   try
+-    PopupMessageLoop(Self, tbetMouseDown in Options, tbetDropDownMenus in Options,
+-      tbetKeyboardControl in Options, False, DoneActionData);
++    { remove all states except... }
++    FState := FState * [vsShowAccels];
++    try
++      Include(FState, vsModal);
++      { Now that the vsModal state has been added, send an MSAA focus event }
++      if Assigned(Selected) then
++        NotifyFocusEvent;
++      ModalHandler.Loop(Self, tbetMouseDown in Options,
++        tbetDropDownMenus in Options, tbetKeyboardControl in Options, False,
++        DoneActionData);
++    finally
++      { Remove vsModal state from the root view before any TTBView.Destroy
++        methods get called (as a result of the CloseChildPopups call below),
++        so that NotifyFocusEvent becomes a no-op }
++      Exclude(FState, vsModal);
++      StopAllTimers;
++      CloseChildPopups;
++      GetCursorPos(P);
++      UpdateSelection(@P, True);
++    end;
+   finally
+-    StopAllTimers;
+-    CloseChildPopups;
+-    GetCursorPos(P);
+-    UpdateSelection(@P, True);
++    ModalHandler.Free;
+   end;
+   SetAccelsVisibility(False);
+   Selected := nil;
+@@ -4904,9 +5949,17 @@
+   var EventData: TTBItemEventData);
+ 
+   procedure SelNextItem(const ParentView: TTBView; const GoForward: Boolean);
++  var
++    NewSelected: TTBItemViewer;
+   begin
+-    ParentView.Selected := ParentView.NextSelectable(ParentView.FSelected,
++    NewSelected := ParentView.NextSelectable(ParentView.FSelected,
+       GoForward);
++    { So that MSAA receives events in the right order, close child popups
++      *before* changing selection }
++    if (ParentView.Selected <> NewSelected) and
++       Assigned(ParentView.FOpenViewer) then
++      ParentView.CloseChildPopups;
++    ParentView.Selected := NewSelected;
+     ParentView.ScrollSelectedIntoView;
+   end;
+ 
+@@ -5104,9 +6157,38 @@
+ end;
+ 
+ 
+-{ Message loop procs. }
++{ TTBModalHandler }
++
++constructor TTBModalHandler.Create(AExistingWnd: HWND);
++begin
++  inherited Create;
++  LastPos := SmallPointToPoint(TSmallPoint(GetMessagePos()));
++  if AExistingWnd <> 0 then
++    FWnd := AExistingWnd
++  else begin
++    FWnd := {$IFDEF JR_D6}Classes.{$ENDIF} AllocateHWnd(nil);
++    FCreatedWnd := True;
++  end;
++  SetCapture(FWnd);
++  SetCursor(LoadCursor(0, IDC_ARROW));
++  CallNotifyWinEvent(EVENT_SYSTEM_MENUSTART, FWnd, OBJID_CLIENT, CHILDID_SELF);
++  FInited := True;
++end;
+ 
+-procedure PopupMessageLoop(const RootView: TTBView;
++destructor TTBModalHandler.Destroy;
++begin
++  if FWnd <> 0 then begin
++    if GetCapture = FWnd then
++      ReleaseCapture;
++    if FInited then
++      CallNotifyWinEvent(EVENT_SYSTEM_MENUEND, FWnd, OBJID_CLIENT, CHILDID_SELF);
++    if FCreatedWnd then
++      {$IFDEF JR_D6}Classes.{$ENDIF} DeallocateHWnd(FWnd);
++  end;
++  inherited;
++end;
++
++procedure TTBModalHandler.Loop(const RootView: TTBView;
+   const AMouseDown, ADropDownMenus, KeyboardControl, TrackRightButton: Boolean;
+   var DoneActionData: TTBDoneActionData);
+ var
+@@ -5119,75 +6201,19 @@
+       Result := Result.FOpenViewerView;
+   end;
+ 
+-  function IsPtInScrollArrow(P: TPoint; View: TTBView; ADownArrow: Boolean): Boolean;
+-  var
+-    R: TRect;
+-  begin
+-    Result := False;
+-    P := View.FWindow.ScreenToClient(LastPos);
+-    R := View.FWindow.ClientRect;
+-    if PtInRect(R, P) then begin
+-      if ADownArrow then
+-        Result := View.FShowDownArrow and (P.Y >= R.Bottom - tbMenuScrollArrowHeight)
+-      else
+-        Result := View.FShowUpArrow and (P.Y < tbMenuScrollArrowHeight);
+-    end;
+-  end;
+-
+   procedure UpdateAllSelections(const P: TPoint; const AllowNewSelection: Boolean);
+   var
+     View, CapView: TTBView;
+-    OldSelected: TTBItemViewer;
+-    MenuShowDelay: Integer;
+   begin
+-    MenuShowDelay := -1;
+     View := GetActiveView;
++
+     CapView := View;
+     while Assigned(CapView) and not CapView.FCapture do
+       CapView := CapView.FParentView;
++
+     while Assigned(View) do begin
+-      if (CapView = nil) or (View = CapView) then begin
+-        OldSelected := View.FSelected;
++      if (CapView = nil) or (View = CapView) then
+         View.UpdateSelection(@P, AllowNewSelection);
+-        { Was a submenu item selected for the first time, or if a submenu was
+-          already open, has the selection has moved to a different item? }
+-        if (vsMouseInWindow in View.FState) and
+-           (View.FOpenViewer <> View.FSelected) and
+-           (Assigned(View.FOpenViewerView) or (tbisSubmenu in View.FSelected.Item.ItemStyle)) then begin
+-          if View.FIsToolbar then begin
+-            if (View <> RootView) and not View.FCapture then
+-              { On chevron popups, always drop down menus when mouse passes
+-                over them, like Office 2000 }
+-              Include(View.FState, vsDropDownMenus);
+-            if vsDropDownMenus in View.FState then
+-              View.OpenChildPopup(False);
+-          end
+-          else begin
+-            { Use timers to delay the showing/hiding of submenus of submenus }
+-            if MenuShowDelay = -1 then
+-              MenuShowDelay := GetMenuShowDelay;
+-            if not(tiOpen in View.FActiveTimers) then
+-              View.StartTimer(tiClose, MenuShowDelay);
+-            if not(tiOpen in View.FActiveTimers) or (View.FSelected <> OldSelected) then
+-              View.StartTimer(tiOpen, MenuShowDelay);
+-          end;
+-        end;
+-        { Update scroll arrow timers }
+-        if (vsMouseInWindow in View.FState) and IsPtInScrollArrow(P, View, False) then begin
+-          View.StopTimer(tiScrollDown);
+-          if not(tiScrollUp in View.FActiveTimers) then
+-            View.StartTimer(tiScrollUp, 100);
+-        end
+-        else if (vsMouseInWindow in View.FState) and IsPtInScrollArrow(P, View, True) then begin
+-          View.StopTimer(tiScrollUp);
+-          if not(tiScrollDown in View.FActiveTimers) then
+-            View.StartTimer(tiScrollDown, 100);
+-        end
+-        else begin
+-          View.StopTimer(tiScrollUp);
+-          View.StopTimer(tiScrollDown);
+-        end;
+-      end;
+       View := View.FParentView;
+     end;
+   end;
+@@ -5233,7 +6259,7 @@
+ 
+   function ContinueLoop: Boolean;
+   begin
+-    Result := GetCapture = CapHandle;
++    Result := GetCapture = FWnd;
+   end;
+ 
+   function SendKeyEvent(const View: TTBView; var Key: Word;
+@@ -5358,11 +6384,10 @@
+     Include(RootView.FState, vsDropDownMenus)
+   else
+     Exclude(RootView.FState, vsDropDownMenus);
+-  Include(RootView.FState, vsOpen);
+-  TBBeginCapture(RootView.FWindow.Handle);
+   try
+   try
+     EventData.RootView := RootView;
++    EventData.CaptureWnd := FWnd;
+     EventData.MouseDownOnMenu := False;
+     EventData.CancelLoop := False;
+     EventData.DoneActionData := @DoneActionData;
+@@ -5413,6 +6438,12 @@
+         end;
+         if PeekMessage(Msg, 0, 0, 0, PM_REMOVE or PM_NOYIELD) then begin
+           case Msg.message of
++            $4D:
++              { This undocumented message is sent to the focused window when
++                F1 is pressed. Windows handles it by sending a WM_HELP message
++                to the same window. We don't want this to happen while a menu
++                is up, so swallow the message. }
++              ;
+             WM_CONTEXTMENU:
+               { Windows still sends WM_CONTEXTMENU messages for "context menu"
+                 keystrokes even if WM_KEYUP messages are never dispatched,
+@@ -5565,12 +6596,13 @@
+     RootView.CancelCapture;
+   end;
+   finally
+-    Exclude(RootView.FState, vsOpen);
+-    TBEndCapture;
+     Application.Hint := '';
+     { Make sure there are no outstanding WM_*CHAR messages }
+     RemoveMessages(WM_CHAR, WM_DEADCHAR);
+     RemoveMessages(WM_SYSCHAR, WM_SYSDEADCHAR);
++    { Nor any outstanding 'send WM_HELP' messages caused by an earlier press
++      of the F1 key }
++    RemoveMessages($4D, $4D);
+   end;
+ end;
+ 
+@@ -5578,9 +6610,18 @@
+ { TTBPopupView }
+ 
+ procedure TTBPopupView.AutoSize(AWidth, AHeight: Integer);
++//Skin Patch Begin
++var
++  FWidth: Integer;
+ begin
++  FWidth := AWidth + (PopupMenuWindowNCSize * 2);
++
++  if (Skin <> nil) and (Skin.SkinType = tbsOfficeXP) then
++    Dec(FWidth);
++//Skin Patch End
++
+   with FWindow do
+-    SetBounds(Left, Top, AWidth + (PopupMenuWindowNCSize * 2),
++    SetBounds(Left, Top, FWidth, //Skin Patch
+       AHeight + (PopupMenuWindowNCSize * 2));
+ end;
+ 
+@@ -5595,37 +6636,82 @@
+ constructor TTBPopupWindow.CreatePopupWindow(AOwner: TComponent;
+   const AParentView: TTBView; const AItem: TTBCustomItem;
+   const ACustomizing: Boolean);
++//Skin Patch Begin
++Var
++ CSkin: TTBBaseSkin;
++ Skinned: Boolean;
++//Skin Patch End
+ begin
+   inherited Create(AOwner);
+   Visible := False;
+   SetBounds(0, 0, 320, 240);
+   ControlStyle := ControlStyle - [csCaptureMouse];
+-  ShowHint := True;
+   Color := tbMenuBkColor;
+-  FView := GetViewClass.CreateView(Self, AParentView, AItem, Self, False,
+-    ACustomizing, False);
++  ShowHint := True;
++
++//Skin Patch Begin
++ if Assigned(AParentView) and Assigned(AParentView.FSkin) and
++    not (AParentView.FSkin.SkinType = tbsDisabled) then
++    CSkin := AParentView.FSkin
++  else if Assigned(FSkin) and not (FSkin.SkinType = tbsDisabled) then
++    CSkin := FSkin
++  else if Assigned(AItem) and Assigned(AItem.FSkin) and not (AItem.FSkin.SkinType = tbsDisabled) then
++    CSkin := AItem.FSkin
++  else if not (DefaultSkin.SkinType in [tbsDisabled, tbsNativeXP]) then
++    CSkin := DefaultSkin Else CSkin := Nil;
++
++  Skinned := Assigned(CSkin);
++//Skin Patch End
++
+   { Inherit the font from the parent view, or use the system menu font if
+     there is no parent view }
+   if Assigned(AParentView) then
+     Font.Assign(AParentView.GetFont)
+   else
+     Font.Assign(ToolbarFont);
++
++  FView := GetViewClass.CreateView(Self, AParentView, AItem, Self, False,
++    ACustomizing, False);
++  Include(FView.FState, vsModal);
++
++//Skin Patch Begin
++  Skin := CSkin;
++  FView.FSkin := CSkin;
++
++  if Skinned and (tboShadow in CSkin.Options) then begin
++   FShadowPR := TShadow.Create(Nil, True, True);
++   FShadowPB := TShadow.Create(Nil, False, True);
++
++   FShadowPR.ShadowStyle := CSkin.ShadowStyle;
++   FShadowPB.ShadowStyle := CSkin.ShadowStyle;
++
++   if Assigned(AParentView) and (CSkin.SkinType = tbsOfficeXP) then begin
++     FShadowIR := TShadow.Create(Nil, True, False);
++
++     if not ((aparentview.FOrientation = tbvoHorizontal) and
++             (PopupPosition = tbpTop)) then
++       FShadowIB := TShadow.Create(Nil, False, False);
++   end;
++  end;
++
++  if Skinned then
++    Color := CSkin.Colors.tcPopup
++  else
++//Skin Patch End
++
+   { Inherit the accelerator visibility state from the parent view. If there
+-    is no parent view (i.e. it's a standalone popup menu), then hide the
+-    accelerators if the last input came from the mouse. }
+-  with FView do
+-    if Assigned(AParentView) then begin
+-      if vsUseHiddenAccels in AParentView.FStyle then
+-        Include(FStyle, vsUseHiddenAccels);
+-      if vsShowAccels in AParentView.FState then
+-        Include(FState, vsShowAccels);
+-    end
+-    else begin
+-      (* doesn't quite work right; disabled for now
+-      if GetQueueStatus(QS_MOUSE) shr 16 <> 0 then  { is high-order word non-zero? }
+-        Include(FState, vsUseHiddenAccels);
+-      *)
+-    end;
++    is no parent view (i.e. it's a standalone popup menu), then default to
++    hiding accelerator keys, but change this in CreateWnd if the last input
++    came from the keyboard. }
++  if Assigned(AParentView) then begin
++    if vsUseHiddenAccels in AParentView.FStyle then
++      Include(FView.FStyle, vsUseHiddenAccels);
++    if vsShowAccels in AParentView.FState then
++      Include(FView.FState, vsShowAccels);
++  end
++  else
++    Include(FView.FStyle, vsUseHiddenAccels);
++
+   if Application.Handle <> 0 then
+     { Use Application.Handle if possible so that the taskbar button for the app
+       doesn't pop up when a TTBEditItem on a popup menu is focused }
+@@ -5638,6 +6724,27 @@
+ 
+ destructor TTBPopupWindow.Destroy;
+ begin
++  Destroying;
++
++//Skin Patch Begin
++  if Assigned(FShadowPR) then
++   FreeAndNil(FShadowPR);
++
++  if Assigned(FShadowPB) then
++   FreeAndNil(FShadowPB);
++
++  if Assigned(FShadowIR) then
++   FreeAndNil(FShadowIR);
++
++  if Assigned(FShadowIB) then
++   FreeAndNil(FShadowIB);
++//Skin Patch End
++
++  { Ensure window handle is destroyed *before* FView is freed, since
++    DestroyWindowHandle calls CallNotifyWinEvent which may result in
++    FView.HandleWMObject being called }
++  if HandleAllocated then
++    DestroyWindowHandle;
+   FreeAndNil(FView);
+   inherited;
+ end;
+@@ -5660,6 +6767,10 @@
+ procedure TTBPopupWindow.CreateParams(var Params: TCreateParams);
+ const
+   CS_DROPSHADOW = $00020000;
++//Skin Patch Begin
++var
++ ShowShadows: boolean;
++//Skin Patch End
+ begin
+   inherited;
+   with Params do begin
+@@ -5667,8 +6778,36 @@
+     ExStyle := ExStyle or WS_EX_TOPMOST or WS_EX_TOOLWINDOW;
+     WindowClass.Style := WindowClass.Style or CS_SAVEBITS;
+     { Enable drop shadow effect on Windows XP and later }
+-    if IsWindowsXP then
+-      WindowClass.Style := WindowClass.Style or CS_DROPSHADOW;
++//Skin Patch Begin
++    if Assigned(FSkin) then
++      ShowShadows := (FSkin.SkinType = tbsNativeXP) or (FSkin.SkinType = tbsDisabled)
++    else
++      ShowShadows := True;
++
++     if IsWindowsXP and ShowShadows then
++//Skin Patch End
++       WindowClass.Style := WindowClass.Style or CS_DROPSHADOW;
++  end;
++end;
++
++procedure TTBPopupWindow.CreateWnd;
++const
++  WM_CHANGEUISTATE = $0127;
++  WM_QUERYUISTATE  = $0129;
++  UIS_INITIALIZE = 3;
++  UISF_HIDEACCEL = $2;
++var
++  B: Boolean;
++begin
++  inherited;
++  { On a top-level popup window, send WM_CHANGEUISTATE & WM_QUERYUISTATE
++    messages to the window to see if the last input came from the keyboard
++    and if the accelerator keys should be shown }
++  if (FView.ParentView = nil) and not FAccelsVisibilitySet then begin
++    FAccelsVisibilitySet := True;
++    SendMessage(Handle, WM_CHANGEUISTATE, UIS_INITIALIZE, 0);
++    B := (SendMessage(Handle, WM_QUERYUISTATE, 0, 0) and UISF_HIDEACCEL = 0);
++    FView.SetAccelsVisibility(B);
+   end;
+ end;
+ 
+@@ -5680,9 +6819,17 @@
+   { Cleanly destroy any timers before the window handle is destroyed }
+   if Assigned(FView) then
+     FView.StopAllTimers;
++  CallNotifyWinEvent(EVENT_SYSTEM_MENUPOPUPEND, WindowHandle, OBJID_CLIENT,
++    CHILDID_SELF);
+   inherited;
+ end;
+ 
++procedure TTBPopupWindow.WMGetObject(var Message: TMessage);
++begin
++  if not FView.HandleWMGetObject(Message) then
++    inherited;
++end;
++
+ procedure TTBPopupWindow.CMShowingChanged(var Message: TMessage);
+ const
+   ShowFlags: array[Boolean] of UINT = (
+@@ -5728,9 +6875,46 @@
+ end;
+ 
+ procedure TTBPopupWindow.WMEraseBkgnd(var Message: TWMEraseBkgnd);
++Var
++  Brush: HBrush;
++  R: TRect;
+ begin
+   { May be necessary in some cases... }
+   TBEndAnimation(WindowHandle);
++
++//Skin Patch Begin
++ if not (FSkin = nil) and not Assigned(FView.FChevronParentView) then begin
++   R := ClientRect;
++
++   if not (FSkin.SkinType in [tbsDisabled, tbsNativeXP]) then
++     case FSkin.PopupStyle of
++       tbpsGradVert,
++       tbpsGradHorz: FillGradient(Message.DC, R, FSkin.Colors.tcPopupGradStart,
++                       FSkin.Colors.tcPopupGradEnd,
++                      TTBGradDir(FSkin.PopupStyle = tbpsGradVert));
++       else inherited;
++     end
++   else
++     inherited;
++
++   if FView.ViewerCount >0 then
++     R := Rect(R.Left, R.Top,  GetImgListMargin(FView.FViewers[0]), R.Bottom)
++   else
++     R := Rect(R.Left, R.Top, 0, R.Bottom);
++
++   with FSkin do
++   if SkinType in [tbsOfficeXP, tbsWindowsXP] then
++   if (ImgBackStyle <> tbimsDefault) then
++     FillGradient(Message.DC, R, Colors.tcImgGradStart, Colors.tcImgGradEnd,
++       TTBGradDir(ImgBackStyle = tbimsGradVert))
++   else
++   begin
++     Brush := CreateSolidBrush(FSkin.RGBColor(cImageList));
++     FillRect(Message.DC, R, Brush);
++     DeleteObject(Brush);
++   end;
++ end
++ else //Skin Patch End
+   inherited;
+ end;
+ 
+@@ -5791,9 +6975,383 @@
+ begin
+   InflateRect(Message.CalcSize_Params^.rgrc[0],
+     -PopupMenuWindowNCSize, -PopupMenuWindowNCSize);
++//Skin Patch Begin
++  if Assigned(FSkin) and (FSkin.SkinType = tbsOfficeXP) then
++    InflateRect(Message.CalcSize_Params^.rgrc[0], 1, 0);
++//Skin Patch End
+   inherited;
+ end;
+ 
++//Skin Patch Begin
++procedure TTBPopupWindow.WMTB2kAnimationEnded(var Message: TMessage);
++begin
++ if Assigned(FShadowIR) then begin
++    FShadowIR.Prepare;
++    FShadowIR.Show;
++ end;
++
++ if Assigned(FShadowIB) then begin
++   FShadowIB.Prepare;
++   FShadowIB.Show;
++ end;
++
++ if Assigned(FShadowPR) then begin
++   FShadowPR.Prepare;
++   FShadowPR.Show;
++ end;
++
++ if Assigned(FShadowPB) then begin
++   FShadowPB.Prepare;
++   FShadowPB.Show;
++ end;
++end;
++
++procedure ProcessSkinNCPaint(Wnd: HWND; DC: HDC; AppData: Longint);
++Var
++  Brush: HBrush;
++  Pen,
++  SavePen: HPen;
++  ItemHeight,
++  ItemWidth,
++  I3, I4,
++  ClipS, ClipE: Integer;
++  PI, PP: TPoint;
++  R, IR, IB, PR, PB, ItemRect, PopupRect: TRect;
++  Orientation: TTBViewOrientation;
++  IsCombo,
++  IsChevron,
++  MenuShadows: Boolean;
++  Skin: TTBBaseSkin;
++  Window: TTBPopupWindow;
++  View: TTBView;
++begin
++  Skin := PTBData(AppData).Skin;
++  Window := PTBData(AppData).Window;
++  View := PTBData(AppData).View;
++
++  I3 := 0;
++
++  ClipS := -1;
++  ClipE := -1;
++
++  IsCombo := False;
++  IsChevron := False;
++  ItemHeight := 0;
++  ItemWidth := 0;
++
++  MenuShadows := (Skin.SkinType = tbsOfficeXP) and not PTBData(AppData).MDI;
++
++  GetWindowRect(Wnd, R); OffsetRect(R, -R.Left, -R.Top);
++
++  case Skin.SkinType of
++   tbsNativeXP,
++   tbsWindowsXP: begin
++                  Brush := CreateSolidBrush(Skin.rgbColor(cBorder));
++                  FrameRect(DC, R, Brush);
++                  DeleteObject(Brush);
++
++                  InflateRect(R, -1, -1);
++
++                  Brush := CreateSolidBrush(Skin.rgbColor(cPopup));
++                  FrameRect(DC, R, Brush);
++                  DeleteObject(Brush);
++
++                  InflateRect(R, -1, -1);
++
++                  Brush := CreateSolidBrush(Skin.rgbColor(cPopup));
++                  FrameRect(DC, R, Brush);
++                  DeleteObject(Brush);
++
++                  I3 := -2;
++                 end;
++    tbsOfficeXP: begin
++                   Pen := CreatePen(PS_SOLID, 1, Skin.rgbColor(cPopup));
++                   SavePen := SelectObject(DC, Pen);
++                   PolyLineEx(DC, [Point(R.Left, R.Top +1),
++                                   Point(R.Right, R.Top +1)]);
++                   PolyLineEx(DC, [Point(R.Left, R.Bottom -2),
++                                   Point(R.Right, R.Bottom -2)]);
++                   SelectObject(DC, SavePen);
++                   DeleteObject(Pen);
++
++                   Brush := CreateSolidBrush(Skin.rgbColor(cBorder));
++                   FrameRect(DC, R, Brush);
++                   DeleteObject(Brush);
++
++                   If Assigned(Window.FView.FParentView) and
++                      (Window.FView.FParentView.IsToolbar) and
++                      (not PTBData(AppData).MDI) then begin
++
++                    IsCombo := tbisCombo in View.FParentItem.ItemStyle;
++                    IsChevron := View.FParentView = View.FChevronParentView;
++                    ItemRect := Window.FView.FParentView.FOpenViewer.FBoundsRect;
++                    PopupRect := Window.BoundsRect;
++                    ItemHeight := (ItemRect.Bottom - ItemRect.Top);
++                    ItemWidth := (ItemRect.Right - ItemRect.Left);
++                    Orientation := Window.FView.FParentView.FOrientation;
++
++                    PI := Window.FView.FParentView.FWindow.ClientToScreen(
++                     Point(Window.FView.FParentView.FOpenViewer.FBoundsRect.TopLeft.X,
++                           Window.FView.FParentView.FOpenViewer.FBoundsRect.BottomRight.Y));
++
++                    PP := Window.ClientToScreen(Point(0, 0));
++
++                     If Orientation = tbvoVertical then begin
++                       I3 := PI.Y - PP.Y;
++
++                       if I3 < 0 then begin
++                         I3 := -2;
++                         I4 := 1;
++                       end else I4 := I3 + 3;
++                     end
++                     else begin
++                       I3 := PI.X - PP.X;
++
++                       if I3 < 0 then begin
++                         I3 := -2;
++                         I4 := 1;
++                       end else I4 := I3 + 3;
++
++                       If PI.X < 0 Then
++                        I3 := I3 + PI.X;
++                     end;
++
++                     Pen := CreatePen(PS_SOLID, 1, Skin.rgbColor(cImageList));
++                     SavePen := SelectObject(DC, Pen);
++
++                     With R Do
++                       If (Orientation = tbvoVertical) then begin
++
++                         ClipS := I4 - ItemHeight;
++                         ClipE := I3 +1; //+ Integer(IsCombo);
++
++                         if I3 > I4 then begin
++                          Inc(ClipS);
++                          Inc(ClipE);
++                         end;
++
++                         if PopupPosition = tbpRight then
++                           PolyLineEx(DC, [Point(Left, ClipS),
++                                           Point(Left, ClipE)])
++                         else
++                           PolyLineEx(DC, [Point(Right -1, ClipS),
++                                           Point(Right -1, ClipE)]);
++                         end
++                         else begin
++                           ClipS := I4;
++                           ClipE := I3 + ItemWidth + (Integer(not IsCombo));
++
++                           if I3 > 0 then begin
++                            Dec(ClipS);
++                            Dec(ClipE);
++                           end;
++
++                           if PopupPosition = tbpTop then begin
++                             PolyLineEx(DC, [Point(ClipS, Bottom -1),
++                                             Point(ClipE, Bottom -1)])
++                           end
++                           else
++                            //Popup is too long ? Don't draw the line
++{                            if (Orientation = tbvoHorizontal) and
++                                not (PP.X -1 = PI.X +
++                                ItemRect.Right - ItemRect.Left) then}
++                             PolyLineEx(DC, [Point(ClipS, Top),
++                                             Point(ClipE, Top)]);
++                         end;
++
++
++                     SelectObject(DC, SavePen);
++                     DeleteObject(Pen);
++                   end;
++                 end;
++  end;
++
++  if (tboShadow in Skin.Options) and Window.Showing then begin
++    If Assigned(Window.FView.FParentView) And Window.FView.FParentView.FIsToolbar then
++     with ItemRect do begin
++
++       If (View.FParentView.FOrientation = tbvoVertical) then begin
++         if PopupPosition = tbpRight then begin
++           with Window, BoundsRect.TopLeft do begin
++             if MenuShadows then
++               FShadowIB.SetBounds(X - ItemWidth + XPMargin + XPMargin Div 2 -
++                                   Integer(IsCombo),
++                                   ClipS + Y + ItemHeight -1,
++                                   ItemWidth,
++                                   XPMargin);
++
++             FShadowPR.SetBounds(X + Width,
++                                 Y,
++                                 XPMargin,
++                                 Height);
++             FShadowPB.SetBounds(Left + XPMargin,
++                                 Y + Height,
++                                 Width,
++                                 XPMargin);
++
++             if MenuShadows then
++               FShadowIB.Corner1 := True;
++
++             FShadowPR.Corner1 := True;
++             FShadowPB.Corner1 := True;
++             FShadowPB.Corner2 := True;
++           end;
++         end
++         else begin
++           with Window, BoundsRect.TopLeft do begin
++             if MenuShadows then begin
++               FShadowIR.SetBounds(Left + Width + ItemWidth - XPMargin Div 2 -
++                                   Integer(IsCombo),
++                                   ClipS + Y,
++                                   XPMargin,
++                                   ItemHeight  -1);
++               FShadowIB.SetBounds(X + Width - XPMargin,
++                                   Y + ItemHeight + ClipS -1,
++                                   ItemWidth + 2 - Integer(IsCombo) + XPMargin,
++                                   XPMargin);
++             end;
++
++             FShadowPR.SetBounds(X + Width,
++                                 Y - Integer(IsCombo) + XPMargin,
++                                 XPMargin,
++                                 Height + Integer(IsCombo) - XPMargin);
++             FShadowPB.SetBounds(Left + XPMargin,
++                                 Y + Height,
++                                 Width,
++                                 XPMargin);
++
++             if MenuShadows then begin
++               FShadowIR.Corner1 := True;
++               FShadowIB.Corner2 := True;
++
++               If ClipS <5 Then ClipS := 4;
++
++               FShadowPR.ClipStart := ClipS -1 - (Integer(ClipS <> 4) * XPMargin) + Integer(IsCombo);
++               FShadowPR.ClipFinish := ClipE + Integer(IsCombo);
++             end;
++
++             FShadowPR.Corner1 := True;
++             FShadowPB.Corner1 := True;
++             FShadowPB.Corner2 := True;
++           end;
++         end;
++       end
++       else if PopupPosition = tbpTop then begin
++         with Window, BoundsRect, TopLeft do begin
++           if MenuShadows then begin
++             IR := Rect(Left + ClipE +1,
++                        Y + Height - XPMargin *2,
++                        XPMargin,
++                        ItemHeight + XPMargin + 2);
++             IB := Rect(PI.X + XPMargin - Integer(IsCombo),
++                        Y + Height + ItemHeight - 2,
++                        ItemWidth,
++                        XPMargin);
++
++             FShadowIR.SetBounds(IR.Left, IR.Top, IR.Right, IR.Bottom);
++             FShadowIB.SetBounds(IB.Left, IB.Top, IB.Right, IB.Bottom);
++
++             FShadowIB.Corner1 := True;
++             FShadowIB.Corner2 := True;
++
++             if ClipS >1 then begin
++              FShadowPB.ClipStart := ClipS -XPMargin -1 + Integer(IsCombo);
++              FShadowPB.ClipFinish := ClipE + Integer(IsCombo);
++              FShadowPB.Corner1 := True;
++             end else begin
++               FShadowPB.ClipStart := 1;
++               FShadowPB.ClipFinish := ItemWidth -2 +
++                                       (Integer(PI.X <0) * PI.X +1);
++             end;
++           end;
++
++           FShadowPR.SetBounds(X + Width,
++                               Y,
++                               XPMargin,
++                               Height);
++           FShadowPB.SetBounds(X + XPMargin -
++                               Integer(IsCombo),
++                               Y + Height,
++                               Width + Integer(IsCombo),
++                               XPMargin);
++
++           FShadowPR.Corner1 := True;
++           FShadowPR.Corner2 := True;
++           FShadowPB.Corner2 := True;
++         end;
++       end
++       else begin
++         with Window, BoundsRect.TopLeft do begin
++           if MenuShadows then begin
++             IR := Rect(X + ItemWidth + I3 +2 - Integer(Boolean(ClipS >1)) - Integer(IsCombo),
++                        Top - ItemHeight + XPMargin Div 2,
++                        XPMargin,
++                        ItemHeight - XPMargin + XPMargin Div 2);
++
++             FShadowIR.SetBounds(IR.Left, IR.Top, IR.Right, IR.Bottom);
++             FShadowIR.Corner1 := True;
++           end;
++
++           PR := Rect(X + Width, Y, XPMargin, Height);
++           PB := Rect(Left + XPMargin, Y + Height, Width, XPMargin);
++
++           if IsChevron then begin
++            Dec(PR.Top, XPMargin *2);
++            Inc(PR.Bottom, XPMargin *2);
++           end;
++
++           FShadowPR.SetBounds(PR.Left, PR.Top, PR.Right, PR.Bottom);
++           FShadowPB.SetBounds(PB.Left, PB.Top, PB.Right, PB.Bottom);
++
++           if not IsChevron then
++            FShadowPR.Corner1 := True;
++
++           FShadowPB.Corner1 := True;
++           FShadowPB.Corner2 := True;
++         end;
++       end;
++     end
++     else //Single Popup Shadows
++       with Window, BoundsRect.TopLeft do begin
++         FShadowPR.SetBounds(X + Width,
++                             Y + XPMargin,
++                             XPMargin,
++                             Height - XPMargin);
++         FShadowPB.SetBounds(Left + XPMargin,
++                             Y + Height,
++                             Width,
++                             XPMargin);
++         FShadowPR.Corner1 := True;
++         FShadowPB.Corner1 := True;
++         FShadowPB.Corner2 := True;
++       end;
++
++   if ShowShadow then
++    with Window do begin
++     if Assigned(FShadowIR) and not FShadowIR.Visible then begin
++       FShadowIR.Prepare;
++       FShadowIR.Show;
++     end;
++
++     if Assigned(Window.FShadowIB) and not FShadowIB.Visible then begin
++       FShadowIB.Prepare;
++       FShadowIB.Show;
++     end;
++
++     if not FShadowPR.Visible and not FShadowPB.Visible then begin
++       FShadowPR.Prepare;
++       FShadowPR.Show;
++     end;
++
++     if not FShadowPB.Visible and not FShadowPB.Visible then begin
++       FShadowPB.Prepare;
++       FShadowPB.Show;
++     end;
++    End;
++  end;
++end;
++//Skin Patch End;
++
+ procedure PopupWindowNCPaintProc(Wnd: HWND; DC: HDC; AppData: Longint);
+ var
+   R: TRect;
+@@ -5824,19 +7382,74 @@
+ procedure TTBPopupWindow.WMNCPaint(var Message: TMessage);
+ var
+   DC: HDC;
++  CSkin: TTBBaseSkin; //Skin Patch
++  Data: TTBData;
+ begin
+   DC := GetWindowDC(Handle);
+   try
+     SelectNCUpdateRgn(Handle, DC, HRGN(Message.WParam));
+-    PopupWindowNCPaintProc(Handle, DC, Longint(Self));
++//Skin Patch Begin
++    If Assigned(Skin) and not (Skin.SkinType = tbsDisabled) and
++       not (Skin.SkinType = tbsNativeXP) then
++      CSkin := Skin
++    else
++      If Assigned(FView.FParentView) and Assigned(FView.FParentView.FSkin) and
++         not (FView.FParentView.FSkin.SkinType = tbsDisabled) and
++         not (FView.FParentView.FSkin.SkinType = tbsNativeXP) then
++        CSkin := FView.FParentView.FSkin
++      else CSkin := Nil;
++
++    ShowShadow := True;
++
++    with Data do begin
++     Window := Self;
++     Skin := CSkin;
++     View := FView;
++     MDI := (FView.ParentItem.Tag = 1234567890);
++    end;
++
++    if Assigned(CSkin) then
++      ProcessSkinNCPaint(Handle, DC, LongInt(@Data))
++    else //Skin Patch End
++      PopupWindowNCPaintProc(Handle, DC, Longint(Self));
+   finally
+     ReleaseDC(Handle, DC);
+   end;
+ end;
+ 
+ procedure TTBPopupWindow.WMPrint(var Message: TMessage);
+-begin
+-  HandleWMPrint(Handle, Message, PopupWindowNCPaintProc, Longint(Self));
++//Skin Patch Begin
++Var
++  CSkin: TTBBaseSkin;
++  Data: TTBData;
++//Skin Patch End
++begin
++//Skin Patch Begin
++  If Assigned(FSkin) and not (Skin.SkinType = tbsDisabled)
++     and not (Skin.SkinType = tbsNativeXP) then
++    CSkin := FSkin
++  else
++    If Assigned(View.FParentView) and Assigned(View.FParentView.FSkin) and
++       not (View.FParentView.FSkin.SkinType = tbsDisabled) and
++       not (View.FParentView.FSkin.SkinType = tbsNativeXP) then
++      CSkin := View.FParentView.FSkin
++    else if not (DefaultSkin.SkinType = tbsDisabled)
++        and not (DefaultSkin.SkinType = tbsNativeXP) then
++      CSkin := DefaultSkin else CSkin := Nil;
++
++  ShowShadow := False;
++
++  with Data do begin
++   Window := Self;
++   Skin := CSkin;
++   View := FView;
++   MDI := (FView.ParentItem.Tag = 1234567890);
++  end;
++
++  If Assigned(CSkin) then
++    HandleWMPrint(Handle, Message, ProcessSkinNCPaint, LongInt(@Data))
++  else //Skin Patch End
++    HandleWMPrint(Handle, Message, PopupWindowNCPaintProc, Longint(Self));
+ end;
+ 
+ procedure TTBPopupWindow.WMPrintClient(var Message: TMessage);
+@@ -5896,6 +7509,7 @@
+ 
+ constructor TTBPopupMenu.Create(AOwner: TComponent);
+ begin
++  FSkin := DefaultSkin; //Skin Patch
+   inherited;
+   FItem := GetRootItemClass.Create(Self);
+   FItem.ParentComponent := Self;
+@@ -5908,6 +7522,24 @@
+   inherited;
+ end;
+ 
++//Skin Patch Begin
++procedure TTBPopupMenu.SetSkin(const Value: TTBBaseSkin);
++begin
++  if FSkin <> Value then
++  begin
++    if Assigned(Value) then
++    begin
++      FSkin.FreeNotification(Self);
++      FSkin := Value;
++      FItem.FSkin := Value;
++    end else begin
++      FSkin := DefaultSkin;
++      FItem.FSkin := DefaultSkin;
++    end;
++  end;
++end;
++//Skin Patch End
++
+ function TTBPopupMenu.GetItems: TTBCustomItem;
+ begin
+   Result := FItem;
+@@ -5923,6 +7555,21 @@
+   FItem.SetChildOrder(Child, Order);
+ end;
+ 
++//Skin Patch Begin
++procedure TTBPopupMenu.Notification(AComponent: TComponent;
++  Operation: TOperation);
++begin
++  inherited;
++  if Operation = opRemove then
++  begin
++    if AComponent = FSkin then begin
++      Skin := DefaultSkin;
++      FItem.FSkin := DefaultSkin;
++    end;
++  end;
++end;
++//Skin Patch End
++
+ function TTBPopupMenu.GetRootItemClass: TTBRootItemClass;
+ begin
+   Result := TTBRootItem;
+@@ -6106,6 +7753,39 @@
+     FImagesBitmapMaskColor := Value;
+     ImagesBitmapChanged(nil);
+   end;
++end;
++
++
++{ TTBBaseAccObject }
++
++{ According to the MSAA docs:
++  "With Active Accessibility 2.0, servers can return E_NOTIMPL from IDispatch
++  methods and Active Accessibility will implement the IAccessible interface
++  for them."
++  And there was much rejoicing. }
++
++function TTBBaseAccObject.GetIDsOfNames(const IID: TGUID; Names: Pointer;
++  NameCount, LocaleID: Integer; DispIDs: Pointer): HResult;
++begin
++  Result := E_NOTIMPL;
++end;
++
++function TTBBaseAccObject.GetTypeInfo(Index, LocaleID: Integer;
++  out TypeInfo): HResult;
++begin
++  Result := E_NOTIMPL;
++end;
++
++function TTBBaseAccObject.GetTypeInfoCount(out Count: Integer): HResult;
++begin
++  Result := E_NOTIMPL;
++end;
++
++function TTBBaseAccObject.Invoke(DispID: Integer; const IID: TGUID;
++  LocaleID: Integer; Flags: Word; var Params; VarResult, ExcepInfo,
++  ArgErr: Pointer): HResult;
++begin
++  Result := E_NOTIMPL;
+ end;
+ 
+ 
+Index: TB2MDI.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2MDI.pas,v
+retrieving revision 1.10
+diff -u -r1.10 TB2MDI.pas
+--- TB2MDI.pas	15 Nov 2002 00:06:39 -0000	1.10
++++ TB2MDI.pas	14 Jun 2003 15:15:07 -0000
+@@ -2,11 +2,13 @@
+ 
+ {
+   Toolbar2000
+-  Copyright (C) 1998-2002 by Jordan Russell
++  Copyright (C) 1998-2001 by Jordan Russell
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
+-  $jrsoftware: tb2k/Source/TB2MDI.pas,v 1.10 2002/11/15 00:06:39 jr Exp $
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
++  $jrsoftware: tb2k/Source/TB2MDI.pas,v 1.11 2003/03/31 02:42:52 jr Exp $
+ }
+ 
+ interface
+@@ -14,7 +16,7 @@
+ {$I TB2Ver.inc}
+ 
+ uses
+-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
++  Windows, Messages, Classes, Graphics, Controls, Forms,
+   Menus, TB2Item, TB2Toolbar;
+ 
+ type
+@@ -121,7 +123,8 @@
+ implementation
+ 
+ uses
+-  TB2Common, TB2Consts, CommCtrl;
++  TB2Common, TB2Consts, CommCtrl,
++  TBSkinPlus; //Skin Patch
+ 
+ type
+   TTBCustomToolbarAccess = class(TTBCustomToolbar);
+@@ -192,6 +195,10 @@
+   FImageList.Handle := ImageList_LoadBitmap(HInstance, 'TB2SYSMENUIMAGES',
+     16, 0, clSilver);
+   SubMenuImages := FImageList;
++
++//Setting this number tag in order avoid the
++//shadows on the menu icon the
++  Tag := 1234567890; //Skin Patch
+ end;
+ 
+ function TTBMDISystemMenuItem.GetItemViewerClass(AView: TTBView): TTBItemViewerClass;
+@@ -305,6 +312,7 @@
+   inherited;
+   ItemStyle := ItemStyle - [tbisSelectable, tbisRedrawOnSelChange] +
+     [tbisRightAlign];
++  ItemStyle := ItemStyle + [tbisRedrawOnSelChange]; //Skin Patch
+ end;
+ 
+ function TTBMDIButtonItem.GetItemViewerClass(AView: TTBView): TTBItemViewerClass;
+@@ -323,6 +331,14 @@
+     if AWidth < 0 then AWidth := 0;
+     AHeight := GetSystemMetrics(SM_CYMENUSIZE) - 4;
+     if AHeight < 0 then AHeight := 0;
++
++//Skin Patch Begin
++  If Assigned(View.Skin) and (View.Skin.SkinType = tbsOfficeXP) then
++   Inc(AHeight)
++  else
++   if (DefaultSkin.SkinType = tbsOfficeXP) then
++    Inc(AHeight)
++//Skin Patch End
+   end
+   else begin
+     AWidth := 16;
+@@ -336,9 +352,109 @@
+   ButtonTypeFlags: array[TTBMDIButtonType] of UINT = (DFCS_CAPTIONMIN,
+     DFCS_CAPTIONRESTORE, DFCS_CAPTIONCLOSE);
+   PushedFlags: array[Boolean] of UINT = (0, DFCS_PUSHED);
+-begin
++  EnabledFlags: array[Boolean] of UINT = (DFCS_INACTIVE, 0);
++//Skin Patch Begin
++  TextMap: array[TTBMDIButtonType, 0..1] of PChar =
++   (('0', '12'), ('2', '12'), ('r', '10'));
++  MDIButtonTypeXP: array[TTBMDIButtonType] of WindowPart =
++  (WP_MDIMINBUTTON, WP_MDIRESTOREBUTTON, WP_MDICLOSEBUTTON);
++//(Symbol Letter, Size)
++Var
++ CSkin: TTBBaseSkin;
++ Brush: HBrush;
++ R: TRect;
++ DC: HDC;
++ CurFont,
++ SaveFont: HFont;
++//Skin Patch End
++begin
++//Skin Patch Begin
++  If Assigned(View.Skin) and not(View.Skin.SkinType = tbsDisabled) then
++   CSkin := View.Skin
++  else
++   if not (DefaultSkin.SkinType = tbsDisabled) then
++    CSkin := DefaultSkin else CSkin := nil;
++
++  if Assigned(CSkin) then
++  if CSkin.SkinType = tbsNativeXP then begin
++    DC := Canvas.Handle; //Optimization
++    R := ClientAreaRect;
++
++    aTheme := OpenThemeData(0, WindowThemeName);
++    aPart := Integer(MDIButtonTypeXP[TTBMDIButtonItem(Item).FButtonType]);
++
++    If Not Item.Enabled Then
++      aState := Integer(ButtonState(CBS_DISABLED))
++    Else
++     If IsPushed Then
++      aState := Integer(ButtonState(CBS_PUSHED))
++     Else
++      If IsSelected Then
++        aState := Integer(ButtonState(CBS_HOT))
++      Else
++       aState := Integer(ButtonState(CBS_NORMAL));
++
++    DrawThemeBackground(aTheme, DC, aPart, aState, R, nil);
++    CloseThemeData(aTheme);
++  end
++  else begin
++    Brush := 0;
++
++    DC := Canvas.Handle; //Optimization
++    R := ClientAreaRect;
++
++    if IsSelected and not (vsModal in View.State) then
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelBar))
++    else if IsPushed then
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelPushed));
++
++    if Brush <> 0 then begin
++      FillRect(DC, R, Brush);
++      DeleteObject(Brush);
++    end;
++
++    if IsSelected and not (vsModal in View.State) then
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelBarBorder))
++    else if IsPushed then
++      Brush := CreateSolidBrush(CSkin.RGBColor(cSelPushedBorder));
++
++    if Brush <> 0 then begin
++      FrameRect(DC, R, Brush);
++      DeleteObject(Brush);
++    end;
++
++    CurFont := CreateFont(-10,
++                          0, 0, 0, FW_NORMAL, 0, 0, 0,
++                          DEFAULT_CHARSET,
++                          OUT_TT_PRECIS,
++                          CLIP_DEFAULT_PRECIS,
++                          DEFAULT_QUALITY,
++                          DEFAULT_PITCH,
++                          'Marlett');
++
++    SaveFont := SelectObject(DC, CurFont);
++
++    SetBkMode(DC, TRANSPARENT);
++
++    if IsSelected then
++     SetTextColor(DC, CSkin.RGBColor(cText))
++    else
++     SetTextColor(DC, ColorToRGB(clBtnText));
++
++    Inc(R.Top);
++
++    DrawText(DC, TextMap[TTBMDIButtonItem(Item).FButtonType][0],
++             1, R,
++             DT_CENTER or DT_VCENTER or DT_NOCLIP or DT_NOPREFIX or
++             DT_SINGLELINE);
++
++    SelectObject(DC, SaveFont);
++    DeleteObject(CurFont);
++   end
++  else //Skin Patch End
+   DrawFrameControl(Canvas.Handle, ClientAreaRect, DFC_CAPTION,
+-    ButtonTypeFlags[TTBMDIButtonItem(Item).FButtonType] or PushedFlags[IsPushed]);
++    ButtonTypeFlags[TTBMDIButtonItem(Item).FButtonType] or
++    PushedFlags[IsPushed] or EnabledFlags[Item.Enabled]);
+ end;
+ 
+ 
+@@ -472,22 +588,25 @@
+ 
+ procedure TTBMDIButtonsItem.UpdateState(W: HWND; Maximized: Boolean);
+ var
+-  HasMaxChild: Boolean;
+-  MainForm, ChildForm: TForm;
+-  I: Integer;
+-  VisibilityChanged: Boolean;
++  HasMaxChild, VisibilityChanged: Boolean;
+ 
+-  procedure UpdateVisible(const Item: TTBCustomItem);
++  procedure UpdateVisibleEnabled(const Item: TTBCustomItem;
++    const AEnabled: Boolean);
+   begin
+-    if Item.Visible <> HasMaxChild then begin
++    if (Item.Visible <> HasMaxChild) or (Item.Enabled <> AEnabled) then begin
+       Item.Visible := HasMaxChild;
++      Item.Enabled := AEnabled;
+       VisibilityChanged := True;
+     end;
+   end;
+ 
++var
++  MainForm, ActiveMDIChild, ChildForm: TForm;
++  I: Integer;
+ begin
+   HasMaxChild := False;
+   MainForm := Application.MainForm;
++  ActiveMDIChild := nil;
+   if Assigned(MainForm) then begin
+     for I := 0 to MainForm.MDIChildCount-1 do begin
+       ChildForm := MainForm.MDIChildren[I];
+@@ -498,14 +617,18 @@
+         Break;
+       end;
+     end;
++    ActiveMDIChild := MainForm.ActiveMDIChild;
+   end;
++
+   VisibilityChanged := False;
+-  UpdateVisible(TTBMDIHandler(Owner).FSystemMenuItem);
+-  UpdateVisible(FSep1);
+-  UpdateVisible(FMinimizeItem);
+-  UpdateVisible(FRestoreItem);
+-  UpdateVisible(FSep2);
+-  UpdateVisible(FCloseItem);
++  UpdateVisibleEnabled(TTBMDIHandler(Owner).FSystemMenuItem, True);
++  UpdateVisibleEnabled(FSep1, True);
++  UpdateVisibleEnabled(FMinimizeItem, (ActiveMDIChild = nil) or
++    (GetWindowLong(ActiveMDIChild.Handle, GWL_STYLE) and WS_MINIMIZEBOX <> 0));
++  UpdateVisibleEnabled(FRestoreItem, True);
++  UpdateVisibleEnabled(FSep2, True);
++  UpdateVisibleEnabled(FCloseItem, True);
++
+   if VisibilityChanged and Assigned((Owner as TTBMDIHandler).FToolbar) then begin
+     TTBMDIHandler(Owner).FToolbar.View.InvalidatePositions;
+     TTBMDIHandler(Owner).FToolbar.View.TryValidatePositions;
+Index: TB2Reg.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2Reg.pas,v
+retrieving revision 1.26
+diff -u -r1.26 TB2Reg.pas
+--- TB2Reg.pas	15 Nov 2002 00:15:07 -0000	1.26
++++ TB2Reg.pas	14 Jun 2003 15:15:08 -0000
+@@ -6,6 +6,8 @@
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
+   $jrsoftware: tb2k/Source/TB2Reg.pas,v 1.26 2002/11/15 00:15:07 jr Exp $
+ }
+ 
+@@ -17,7 +19,8 @@
+   Windows, SysUtils, Classes, Graphics, Controls, Dialogs, ActnList, ImgList,
+   {$IFDEF JR_D6} DesignIntf, DesignEditors, VCLEditors, {$ELSE} DsgnIntf, {$ENDIF}
+   TB2Toolbar, TB2ToolWindow, TB2Dock, TB2Item, TB2ExtItems, TB2MRU, TB2MDI,
+-  TB2DsgnItemEditor;
++  TB2DsgnItemEditor,
++  TBSkinPlus {//Skin Patch};
+ 
+ procedure Register;
+ 
+@@ -229,6 +232,9 @@
+   TBRegisterItemClass(TTBMRUListItem, 'New &MRU List Item', HInstance);
+   TBRegisterItemClass(TTBMDIWindowItem, 'New MDI &Windows List', HInstance);
+   TBRegisterItemClass(TTBVisibilityToggleItem, 'New &Visibility-Toggle Item', HInstance);
++
++//Skin Patch Registering TBSkin+
++  RegisterComponents('Toolbar2000', [TTBSkin]);
+ end;
+ 
+ end.
+Index: TB2ToolWindow.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2ToolWindow.pas,v
+retrieving revision 1.16
+diff -u -r1.16 TB2ToolWindow.pas
+--- TB2ToolWindow.pas	13 Mar 2003 17:51:07 -0000	1.16
++++ TB2ToolWindow.pas	14 Jun 2003 15:15:09 -0000
+@@ -6,6 +6,8 @@
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
+   $jrsoftware: tb2k/Source/TB2ToolWindow.pas,v 1.16 2003/03/13 17:51:07 jr Exp $
+ }
+ 
+@@ -14,7 +16,7 @@
+ {$I TB2Ver.inc}
+ 
+ uses
+-  Windows, Classes, Graphics, Controls, TB2Dock;
++  Windows, Messages, Classes, Graphics, Controls, TB2Dock;
+ 
+ type
+   { TTBToolWindow }
+@@ -29,6 +31,9 @@
+     function GetClientAreaHeight: Integer;
+     procedure SetClientAreaHeight(Value: Integer);
+     procedure SetClientAreaSize(AWidth, AHeight: Integer);
++//Skin Patch Begin
++    procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
++//Skin Patch End
+   protected
+     function DoArrange(CanMoveControls: Boolean; PreviousDockType: TTBDockType;
+       NewFloating: Boolean; NewDock: TTBDock): TPoint; override;
+@@ -60,6 +65,7 @@
+     property DockPos;
+     property DockRow;
+     property DragHandleStyle;
++    property DockTextAlign; //Skin Patch
+     property FloatingMode;
+     property Font;
+     property FullSize;
+@@ -81,6 +87,7 @@
+     property UseLastDock;
+     {}{property Version;}
+     property Visible;
++    property Skin; //Skin Patch
+ 
+     property OnClose;
+     property OnCloseQuery;
+@@ -104,6 +111,8 @@
+ 
+ implementation
+ 
++Uses TBSkinPlus;
++
+ const
+   { Constants for TTBToolWindow-specific registry values. Do not localize! }
+   rvClientWidth = 'ClientWidth';
+@@ -237,5 +246,33 @@
+       Height - Client.Bottom + AHeight);
+   end;
+ end;
++
++//Skin Patch Begin
++procedure TTBToolWindow.WMEraseBkgnd(var Message: TWMEraseBkgnd);
++Var
++ Brush: HBrush;
++ CSkin: TTBBaseSkin;
++begin
++ if not Assigned(Skin) then
++   Inherited
++ else begin
++   If Assigned(Skin) then CSkin := Skin
++   else CSkin := DefaultSkin;
++
++   if (CSkin.SkinType = tbsOfficeXP) and Assigned(CurrentDock) then
++     if not ((Assigned(CurrentDock.Background)) and
++             (CurrentDock.BackgroundOnToolbars)) then begin
++        Brush := CreateSolidBrush(Skin.RGBColor(cToolbar));
++
++       FillRect(Message.DC, ClientRect, Brush);
++       DeleteObject(Brush);
++
++       Message.Result := 1;
++     end
++     else Inherited
++   else Inherited;
++ end;
++end;
++//Skin Patch End
+ 
+ end.
+Index: TB2Toolbar.pas
+===================================================================
+RCS file: /data/cvs/tb2k/Source/TB2Toolbar.pas,v
+retrieving revision 1.91
+diff -u -r1.91 TB2Toolbar.pas
+--- TB2Toolbar.pas	13 Mar 2003 19:39:33 -0000	1.91
++++ TB2Toolbar.pas	14 Jun 2003 15:15:16 -0000
+@@ -2,11 +2,13 @@
+ 
+ {
+   Toolbar2000
+-  Copyright (C) 1998-2002 by Jordan Russell
++  Copyright (C) 1998-2003 by Jordan Russell
+   All rights reserved.
+   For conditions of distribution and use, see LICENSE.TXT.
+ 
+-  $jrsoftware: tb2k/Source/TB2Toolbar.pas,v 1.91 2003/03/13 19:39:33 jr Exp $
++  TBSkin+ Modifications (C) Haralabos Michael 2001-2003
++
++  $jrsoftware: tb2k/Source/TB2Toolbar.pas,v 1.91.2.1 2003/06/08 04:33:40 jr Exp $
+ }
+ 
+ interface
+@@ -15,8 +17,8 @@
+ 
+ uses
+   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, ImgList,
+-  Menus, ActnList,
+-  TB2Item, TB2Dock;
++  TB2Item, TB2Dock,
++  TBSkinPlus; //Skin Patch
+ 
+ type
+   TTBCustomToolbar = class;
+@@ -72,6 +74,7 @@
+     function GetOptions: TTBItemOptions;
+     procedure InstallMainWindowHook;
+     function IsChevronHintStored: Boolean;
++    function IsShortCut(var Message: TWMKey): Boolean;
+     class function MainWindowHook(var Message: TMessage): Boolean;
+     procedure SetChevronHint(const Value: String);
+     procedure SetChevronMoveItems(Value: Boolean);
+@@ -97,6 +100,7 @@
+     procedure CMMouseLeave(var Message: TMessage); message CM_MOUSELEAVE;
+     procedure CMShowHintChanged(var Message: TMessage); message CM_SHOWHINTCHANGED;
+     procedure CMWinIniChange(var Message: TWMSettingChange); message CM_WININICHANGE;
++    procedure WMGetObject(var Message: TMessage); message WM_GETOBJECT;
+     procedure WMMouseLeave(var Message: TMessage); message WM_MOUSELEAVE;
+     procedure WMNCMouseMove(var Message: TWMNCMouseMove); message WM_NCMOUSEMOVE;
+     {$IFNDEF JR_D5}
+@@ -104,6 +108,9 @@
+     {$ENDIF}
+     procedure WMSetCursor(var Message: TWMSetCursor); message WM_SETCURSOR;
+     procedure WMSysCommand(var Message: TWMSysCommand); message WM_SYSCOMMAND;
++//Skin Patch Begin
++    procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
++//Skin Patch End
+   protected
+     FMDIButtonsItem: TTBCustomItem;
+     FMDISystemMenuItem: TTBCustomItem;
+@@ -138,6 +145,11 @@
+ 
+     property SystemFont: Boolean read FSystemFont write SetSystemFont default True;
+     property OnShortCut: TShortCutEvent read FOnShortCut write FOnShortCut;
++//Skin Patch Begin
++{$IFNDEF VER120}
++    procedure SetSkin(Value: TTBBaseSkin); override;
++{$ENDIF}
++//Skin Patch End
+   public
+     constructor Create(AOwner: TComponent); override;
+     destructor Destroy; override;
+@@ -146,7 +158,6 @@
+     procedure CreateWrappersForAllControls;
+     procedure GetTabOrderList(List: TList); override;
+     procedure InitiateAction; override;
+-    function IsShortCut(var Message: TWMKey): Boolean;
+     function KeyboardOpen(Key: Char; RequirePrimaryAccel: Boolean): Boolean;
+     procedure ReadPositionData(const Data: TTBReadPositionData); override;
+     procedure WritePositionData(const Data: TTBWritePositionData); override;
+@@ -213,6 +224,8 @@
+     property UpdateActions;
+     property UseLastDock;
+     property Visible;
++    property DockTextAlign; //Skin Patch
++    property Skin; //Skin Patch
+ 
+     property OnClose;
+     property OnCloseQuery;
+@@ -253,14 +266,13 @@
+       IsSelected, IsPushed, UseDisabledShadow: Boolean); override;
+   end;
+ 
+-const
+-  tbChevronSize = 12;
+-
++{const
++  tbChevronSize = 12;} //Moved to TBSkinShared in order to control the size
+ 
+ implementation
+ 
+ uses
+-  TB2Consts, TB2Common, TB2Hook;
++  TB2Consts, TB2Common, TB2Hook, TBSkinShared;
+ 
+ const
+   { Constants for TTBCustomToolbar-specific registry values. Do not localize! }
+@@ -343,7 +355,11 @@
+   DC: HDC;
+   R2: TRect;
+   TempBmp: TBitmap;
+-
++//Skin Patch Begin
++  Brush: HBrush;
++  Skinned: Boolean;
++  CSkin: TTBBaseSkin;
++//Skin Patch End
+   procedure DrawPattern(const Color, Offset: Integer);
+   begin
+     SelectObject(DC, GetSysColorBrush(Color));
+@@ -353,12 +369,66 @@
+ 
+ begin
+   DC := Canvas.Handle;
++//Skin Patch Begin
++  If Assigned(View.Skin) and not (View.Skin.SkinType = tbsDisabled) then
++   CSkin := View.Skin
++  else
++   If Assigned(DefaultSkin) and not (DefaultSkin.SkinType = tbsDisabled) then
++    CSkin := DefaultSkin else CSkin := Nil;
++
++  Skinned := Assigned(CSkin);
++//Skin Patch End
+   R2 := ClientAreaRect;
++
++//Skin Patch Begin
++  if Skinned and (CSkin.SkinType = tbsNativeXP) then begin
++    aTheme := OpenThemeData(0, RebarThemeName);
++    aPart := Integer(RebarPart(MP_CHEVRON));
++
++   if IsPushed then
++    aState := Integer(ChevronState(CHEVS_PRESSED))
++   else
++   if IsSelected then
++     aState := Integer(ChevronState(CHEVS_HOT))
++   else
++    aState := Integer(ChevronState(CHEVS_NORMAL));
++
++   DrawThemeBackground(aTheme, DC, aPart, aState, R2, nil);
++   CloseThemeData(aTheme);
++
++   exit;
++  end;
++//Skin Patch end
++
+   if Item.Enabled then begin
+     if IsPushed then
++//Skin Patch Begin
++     if Skinned then begin
++      Brush := CreateSolidBrush(View.Skin.RGBColor(cFace));
++      FillRect(DC, R2, Brush);
++      DeleteObject(Brush);
++
++      Brush := CreateSolidBrush(View.Skin.RGBColor(cBorder));
++      FrameRect(DC, R2, Brush);
++      DeleteObject(Brush);
++     end
++//Skin Patch End
++     else
+       DrawEdge(DC, R2, BDR_SUNKENOUTER, BF_RECT)
+     else if IsSelected and not(csDesigning in Item.ComponentState) then
+-      DrawEdge(DC, R2, BDR_RAISEDINNER, BF_RECT);
++//Skin Patch Begin
++     if Skinned then begin
++      Brush := CreateSolidBrush(View.Skin.RGBColor(cSelBar));
++      FillRect(DC, R2, Brush);
++      DeleteObject(Brush);
++
++      Brush := CreateSolidBrush(View.Skin.RGBColor(cSelBarBorder));
++      FrameRect(DC, R2, Brush);
++      DeleteObject(Brush);
++     end
++//Skin Patch End
++    else
++     DrawEdge(DC, R2, BDR_RAISEDINNER, BF_RECT);
+   end;
+ 
+   if View.Orientation <> tbvoVertical then begin
+@@ -373,8 +443,11 @@
+     Inc(R2.Top, 2);
+     R2.Bottom := R2.Top + 8;
+   end;
+-  if IsPushed then
+-    OffsetRect(R2, 1, 1);
++
++  if not Skinned then //Skin Patch
++   if IsPushed then
++     OffsetRect(R2, 1, 1);
++
+   TempBmp := TBitmap.Create;
+   try
+     TempBmp.Handle := CreateBitmap(8, 8, 1, 1,
+@@ -398,6 +471,7 @@
+ constructor TTBToolbarView.Create(AOwner: TComponent);
+ begin
+   FToolbar := AOwner as TTBCustomToolbar;
++  Skin := FToolbar.Skin; //Skin Patch
+   inherited;
+ end;
+ 
+@@ -703,6 +777,12 @@
+     FView.Style := FView.Style - [vsAlwaysShowHints];
+ end;
+ 
++procedure TTBCustomToolbar.WMGetObject(var Message: TMessage);
++begin
++  if not FView.HandleWMGetObject(Message) then
++    inherited;
++end;
++
+ procedure TTBCustomToolbar.WMSetCursor(var Message: TWMSetCursor);
+ var
+   P: TPoint;
+@@ -765,6 +845,37 @@
+       end;
+ end;
+ 
++//Skin Patch Begin
++procedure TTBCustomToolbar.WMEraseBkgnd(var Message: TWMEraseBkgnd);
++Var
++ Brush: HBrush;
++ CSkin: TTBBaseSkin;
++begin
++ if not Assigned(Skin) then
++   Inherited
++ else begin
++   If Assigned(Skin) then CSkin := Skin
++   else CSkin := DefaultSkin;
++
++   if (CSkin.SkinType = tbsOfficeXP) and Assigned(CurrentDock) then
++     if not ((Assigned(CurrentDock.Background)) and
++             (CurrentDock.BackgroundOnToolbars)) then begin
++       if FMenuBar and not (tboMenuTBColor in Skin.Options) then
++        Brush := CreateSolidBrush(ColorToRGB(Color))
++       else
++        Brush := CreateSolidBrush(Skin.RGBColor(cToolbar));
++
++       FillRect(Message.DC, ClientRect, Brush);
++       DeleteObject(Brush);
++
++       Message.Result := 1;
++     end
++     else Inherited
++   else Inherited;
++ end;
++end;
++//Skin Patch End
++
+ procedure TTBCustomToolbar.Paint;
+ var
+   R: TRect;
+@@ -1006,11 +1117,11 @@
+     FMenuBar := Value;
+     if Value then begin
+       ControlStyle := ControlStyle + [csMenuEvents];
+-      FView.Style := FView.Style + [vsUseHiddenAccels];
++      FView.Style := FView.Style + [vsMenuBar, vsUseHiddenAccels];
+     end
+     else begin
+       ControlStyle := ControlStyle - [csMenuEvents];
+-      FView.Style := FView.Style - [vsUseHiddenAccels];
++      FView.Style := FView.Style - [vsMenuBar, vsUseHiddenAccels];
+     end;
+     if not(csLoading in ComponentState) then begin
+       FullSize := Value;
+@@ -1611,5 +1722,20 @@
+   if HookCount = 0 then
+     Application.UnhookMainWindow(MainWindowHook);
+ end;
++
++//Skin Patch Begin
++{$IFNDEF VER120}
++procedure TTBCustomToolbar.SetSkin(Value: TTBBaseSkin);
++begin
++ if not HandleAllocated then
++  CreateHandle;
++
++ Inherited;
++
++ if Assigned(FView) and not (FView.Skin = Value) then
++  FView.Skin := Value;
++end;
++{$ENDIF}
++//Skin Patch End
+ 
+ end.

@@ -1,0 +1,50 @@
+var
+ DataBase        : TpFIBDatabase;
+ DataSet         : TpFIBDataSet;
+ DataSource      : TDataSource;
+ ReadTransaction : TpFIBTransaction;
+ MainForm        : TForm;
+ DBGrid          : TDBGrid;  
+begin
+ DataBase := TpFIBDatabase.Create( nil );
+ ReadTransaction := TpFIBTransaction.Create( nil );
+ DataSet := TpFIBDataSet.Create( nil );
+ DataSource := TDataSource.Create(nil);
+ MainForm := TForm.Create( nil );
+ DBGrid := TDBGrid.Create( nil );
+
+ ReadTransaction.DefaultDatabase := DataBase;
+ DataSet.DataBase := DataBase;
+ DataSet.Transaction := ReadTransaction;
+ DataSet.UpdateTransaction := ReadTransaction;
+// DataSet.DataSet_ID := 100;
+ DataSet.SQLs.SelectSQL.Text := 'SELECT * FROM FIB$DATASETS_INFO';
+ DataSource.DataSet := DataSet;
+ DBGrid.DataSource := DataSource;
+
+ with DataBase do
+  begin
+   DBName := 'localhost:path\fsfibdemo.fdb';
+   SQLDialect := 3;
+   with ConnectParams do
+    begin
+     UserName := 'SYSDBA';
+     Password := 'masterkey';
+    end;
+   Connected := True;
+  end;
+
+ with DataSet.AutoUpdateOptions do
+  begin
+   CanChangeSQLs   := True;
+   AutoReWriteSQLs := True;
+   KeyFields       := 'DS_ID';
+   UpdateTableName :='FIB$DATASETS_INFO';
+  end;
+ DataSet.Open;
+ DBGrid.Parent := MainForm;
+ DBGrid.Align := alClient;
+ MainForm.Position := poScreenCenter;
+ MainForm.Caption := 'RecordCountFromSrv=' + IntToStr( DataSet.RecordCountFromSrv );
+ MainForm.Show;
+end.

@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<program>
+  <var pos="1:5">
+    <ident text="r" pos="1:6"/>
+    <type text="Extended" pos="1:17"/>
+  </var>
+  <compoundstmt pos="2:3">
+    <assignstmt pos="3:5">
+      <dsgn pos="3:5">
+        <node text="r" pos="3:6"/>
+      </dsgn>
+      <expr pos="3:10" pos1="3:11">
+        <number text="1" pos="3:11"/>
+      </expr>
+    </assignstmt>
+    <callstmt pos="4:5">
+      <dsgn pos="4:5">
+        <node text="ShowMessage" pos="4:16"/>
+        <expr pos="4:17" pos1="4:18">
+          <dsgn pos="4:17">
+            <node text="r" pos="4:18"/>
+          </dsgn>
+        </expr>
+      </dsgn>
+    </callstmt>
+  </compoundstmt>
+  <types/>
+</program>
